@@ -15,7 +15,18 @@ namespace PrettyText
         {            
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new Form1());
+            //Application.Run(new Form1());
+
+
+
+            AntdUI.Localization.DefaultLanguage = "zh-CN";
+            var lang = AntdUI.Localization.CurrentLanguage;
+            //if (lang.StartsWith("en")) AntdUI.Localization.Provider = new Localizer();
+            AntdUI.Config.TextRenderingHighQuality = true;
+            AntdUI.Config.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+            //AntdUI.Config.SetEmptyImageSvg(Properties.Resources.icon_empty, Properties.Resources.icon_empty_dark);
+            //Application.SetHighDpiMode(HighDpiMode.SystemAware);
+          Application.Run(new NewForm());
         }
     }
 }
