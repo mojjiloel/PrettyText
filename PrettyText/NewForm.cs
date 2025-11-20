@@ -32,6 +32,9 @@ namespace PrettyText
             isLight = ThemeHelper.IsLightMode();
             button_color.Toggle = !isLight;
             ThemeHelper.SetColorMode(this, isLight);
+            
+            // 初始化状态栏颜色
+            UpdateStatusBarColors();
 
             // 填充格式下拉（来自注册器）
             var formats = FormatterRegistry.GetAll().Select(f => f.Name).ToList();
@@ -57,6 +60,9 @@ namespace PrettyText
             txtInput.TextChanged += (s, e) => UpdateStats();
             txtOutput.TextChanged += (s, e) => UpdateStats();
             
+            // 绑定树控件右键菜单事件
+            treeOutput.MouseDown += TreeOutput_MouseDown;
+            
             // 绑定按钮事件
             btnPretty.Click += (s, e) => RunFormat(pretty: true);
             btnMinify.Click += (s, e) => RunFormat(pretty: false);
@@ -81,6 +87,28 @@ namespace PrettyText
             //这里使用了Toggle属性切换图标
             button_color.Toggle = !isLight;
             ThemeHelper.SetColorMode(this, isLight);
+            UpdateStatusBarColors();
+        }
+        
+        /// <summary>
+        /// 更新状态栏颜色以匹配当前主题
+        /// </summary>
+        private void UpdateStatusBarColors()
+        {
+            if (isLight)
+            {
+                // 浅色主题
+                statusPanel.Back = Color.White;
+                lblStatus.ForeColor = Color.Black;
+                lblStats.ForeColor = Color.Black;
+            }
+            else
+            {
+                // 深色主题
+                statusPanel.Back = Color.FromArgb(31, 31, 31);
+                lblStatus.ForeColor = Color.White;
+                lblStats.ForeColor = Color.White;
+            }
         }
 
         private void btnDetect_Click(object sender, EventArgs e)
@@ -583,6 +611,99 @@ namespace PrettyText
             int outLines = output.Length == 0 ? 0 : output.Replace("\r\n", "\n").Split('\n').Length;
             lblStats.Text = "📄 输入 行:" + inLines.ToString() + " 字符:" + input.Length.ToString() +
                             "   |   📝 输出 行:" + outLines.ToString() + " 字符:" + output.Length.ToString();
+        }
+
+        private void TreeOutput_MouseDown(object sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Right)
+            {
+                // 创建右键菜单项
+                var menuItems = new List<AntdUI.IContextMenuStripItem>
+                {
+                    new AntdUI.ContextMenuStripItem("📋 复制节点文本") { Tag = "copy_text" },
+                    new AntdUI.ContextMenuStripItem("📦 复制节点值") { Tag = "copy_value" },
+                    new AntdUI.ContextMenuStripItemDivider(),
+                    new AntdUI.ContextMenuStripItem("➕ 展开所有") { Tag = "expand_all" },
+                    new AntdUI.ContextMenuStripItem("➖ 折叠所有") { Tag = "collapse_all" },
+                    new AntdUI.ContextMenuStripItemDivider(),
+                    new AntdUI.ContextMenuStripItem("🔍 在输出中查找") { Tag = "find_in_output" }
+                };
+
+                // 显示右键菜单
+                AntdUI.ContextMenuStrip.open(treeOutput, OnContextMenuItemClick, menuItems.ToArray());
+            }
+        }
+
+        private void OnContextMenuItemClick(AntdUI.ContextMenuStripItem item)
+        {
+            switch (item.Tag?.ToString())
+            {
+                case "copy_text":
+                    CopyTreeNodeText();
+                    break;
+                case "copy_value":
+                    CopyTreeNodeValue();
+                    break;
+                case "expand_all":
+                    btnExpandAll_Click(null, EventArgs.Empty);
+                    break;
+                case "collapse_all":
+                    btnCollapseAll_Click(null, EventArgs.Empty);
+                    break;
+                case "find_in_output":
+                    FindInOutput();
+                    break;
+            }
+        }
+
+        private void CopyTreeNodeText()
+        {
+            var selectedNode = treeOutput.SelectItem;
+            if (selectedNode != null)
+            {
+                try
+                {
+                    Clipboard.SetText(selectedNode.Text ?? string.Empty);
+                    lblStatus.Text = "✅ 已复制节点文本";
+                }
+                catch (Exception ex)
+                {
+                    lblStatus.Text = "❌ 复制失败: " + ex.Message;
+                }
+            }
+        }
+
+        private void CopyTreeNodeValue()
+        {
+            var selectedNode = treeOutput.SelectItem;
+            if (selectedNode != null)
+            {
+                try
+                {
+                    var value = selectedNode.Tag?.ToString() ?? selectedNode.Text ?? string.Empty;
+                    Clipboard.SetText(value);
+                    lblStatus.Text = "✅ 已复制节点值";
+                }
+                catch (Exception ex)
+                {
+                    lblStatus.Text = "❌ 复制失败: " + ex.Message;
+                }
+            }
+        }
+
+        private void FindInOutput()
+        {
+            var selectedNode = treeOutput.SelectItem;
+            if (selectedNode != null)
+            {
+                var searchText = selectedNode.Text ?? selectedNode.Tag?.ToString() ?? string.Empty;
+                if (!string.IsNullOrEmpty(searchText))
+                {
+                    txtFind.Text = searchText;
+                    // 可以在这里添加实际的查找逻辑
+                    lblStatus.Text = "🔍 已在查找框中填入节点文本";
+                }
+            }
         }
     }
 }

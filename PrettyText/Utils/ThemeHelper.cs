@@ -1,5 +1,7 @@
 ﻿using Microsoft.Win32;
 using System.Drawing;
+// 添加对 AntdUI 的引用
+using AntdUI;
 
 namespace PrettyText.Utils
 {

@@ -56,9 +56,9 @@
             this.btnWrap = new AntdUI.Button();
             this.cboHistory = new AntdUI.Select();
             this.btnFont = new AntdUI.Button();
-            this.statusStrip1 = new System.Windows.Forms.StatusStrip();
-            this.lblStatus = new System.Windows.Forms.ToolStripStatusLabel();
-            this.lblStats = new System.Windows.Forms.ToolStripStatusLabel();
+            this.statusPanel = new AntdUI.Panel();
+            this.lblStatus = new AntdUI.Label();
+            this.lblStats = new AntdUI.Label();
             this.pageHeader1.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.splitContainer1)).BeginInit();
             this.splitContainer1.Panel1.SuspendLayout();
@@ -70,7 +70,7 @@
             this.tabPage1.SuspendLayout();
             this.tabPage2.SuspendLayout();
             this.panelToolbar.SuspendLayout();
-            this.statusStrip1.SuspendLayout();
+            this.statusPanel.SuspendLayout();
             this.SuspendLayout();
             // 
             // pageHeader1
@@ -342,27 +342,32 @@
             this.btnFont.TabIndex = 15;
             this.btnFont.Text = "🎨 字体";
             // 
-            // statusStrip1
+            // statusPanel
             // 
-            this.statusStrip1.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
-            this.lblStatus,
-            this.lblStats});
-            this.statusStrip1.Location = new System.Drawing.Point(0, 548);
-            this.statusStrip1.Name = "statusStrip1";
-            this.statusStrip1.Size = new System.Drawing.Size(1349, 22);
-            this.statusStrip1.TabIndex = 4;
-            this.statusStrip1.Text = "statusStrip1";
+            this.statusPanel.Controls.Add(this.lblStatus);
+            this.statusPanel.Controls.Add(this.lblStats);
+            this.statusPanel.Dock = System.Windows.Forms.DockStyle.Bottom;
+            this.statusPanel.Location = new System.Drawing.Point(0, 548);
+            this.statusPanel.Name = "statusPanel";
+            this.statusPanel.Size = new System.Drawing.Size(1349, 22);
+            this.statusPanel.TabIndex = 4;
             // 
             // lblStatus
             // 
+            this.lblStatus.AutoSize = true;
+            this.lblStatus.Location = new System.Drawing.Point(10, 4);
             this.lblStatus.Name = "lblStatus";
             this.lblStatus.Size = new System.Drawing.Size(52, 17);
+            this.lblStatus.TabIndex = 0;
             this.lblStatus.Text = "✅ 就绪";
             // 
             // lblStats
             // 
+            this.lblStats.AutoSize = true;
+            this.lblStats.Location = new System.Drawing.Point(1299, 4);
             this.lblStats.Name = "lblStats";
             this.lblStats.Size = new System.Drawing.Size(0, 17);
+            this.lblStats.TabIndex = 1;
             // 
             // NewForm
             // 
@@ -370,7 +375,7 @@
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(1349, 570);
             this.Controls.Add(this.splitContainer1);
-            this.Controls.Add(this.statusStrip1);
+            this.Controls.Add(this.statusPanel);
             this.Controls.Add(this.panelToolbar);
             this.Controls.Add(this.pageHeader1);
             this.Font = new System.Drawing.Font("微软雅黑", 9F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(134)));
@@ -389,8 +394,8 @@
             this.tabPage1.ResumeLayout(false);
             this.tabPage2.ResumeLayout(false);
             this.panelToolbar.ResumeLayout(false);
-            this.statusStrip1.ResumeLayout(false);
-            this.statusStrip1.PerformLayout();
+            this.statusPanel.ResumeLayout(false);
+            this.statusPanel.PerformLayout();
             this.ResumeLayout(false);
             this.PerformLayout();
 
@@ -422,9 +427,9 @@
         private AntdUI.Button btnWrap;
         private AntdUI.Select cboHistory;
         private AntdUI.Button btnFont;
-        private System.Windows.Forms.StatusStrip statusStrip1;
-        private System.Windows.Forms.ToolStripStatusLabel lblStatus;
-        private System.Windows.Forms.ToolStripStatusLabel lblStats;
+        private AntdUI.Panel statusPanel;
+        private AntdUI.Label lblStatus;
+        private AntdUI.Label lblStats;
         private AntdUI.TabPage tabPage1;
         private AntdUI.TabPage tabPage2;
         private AntdUI.Button button_color;
