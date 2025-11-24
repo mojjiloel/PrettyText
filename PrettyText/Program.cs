@@ -15,9 +15,7 @@ namespace PrettyText
         {            
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            //Application.Run(new Form1());
-
-
+            //Application.Run(new Debug());
 
             AntdUI.Localization.DefaultLanguage = "zh-CN";
             var lang = AntdUI.Localization.CurrentLanguage;

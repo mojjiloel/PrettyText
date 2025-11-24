@@ -5,6 +5,7 @@ using System.Data;
 using System.Drawing;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions; // 添加正则表达式支持
 using System.Windows.Forms;
 using PrettyText.TextFormatters;
 using PrettyText.Utils;
@@ -52,6 +53,9 @@ namespace PrettyText
 
             // 初始化字体设置
             ApplyFontSettings(_customFontSize, _customFontColor, _customFontFamily);
+            
+            // 应用初始语法高亮
+            ApplySyntaxHighlighting(cboFormat.Text ?? "", txtOutput.Text ?? "");
 
             // 更新统计信息
             UpdateStats();
@@ -88,6 +92,18 @@ namespace PrettyText
             button_color.Toggle = !isLight;
             ThemeHelper.SetColorMode(this, isLight);
             UpdateStatusBarColors();
+            
+            // 重新应用语法高亮
+            ReapplySyntaxHighlighting();
+        }
+        
+        /// <summary>
+        /// 重新应用语法高亮（主题切换时调用）
+        /// </summary>
+        private void ReapplySyntaxHighlighting()
+        {
+            var format = cboFormat.Text ?? "";
+            ApplySyntaxHighlighting(format, txtOutput.Text ?? "");
         }
         
         /// <summary>
@@ -119,8 +135,8 @@ namespace PrettyText
                 cboFormat.Text = formatter.Name;
                 lblStatus.Text = "✅ 识别为 " + formatter.Name;
 
-                //TODO 触发格式化按钮
-                //btnPretty.Click
+                // 自动触发美化按钮
+                RunFormat(pretty: true);
             }
             catch (Exception ex)
             {
@@ -216,6 +232,7 @@ namespace PrettyText
                 }
                 
                 txtOutput.Text = output;
+                ApplySyntaxHighlighting(formatter.Name, output); // 添加语法高亮
                 BuildTree(formatter, output);
                 lblStatus.Text = (pretty ? "✨ 已美化: " : "📦 已压缩: ") + formatter.Name;
                 UpdateStats();
@@ -611,6 +628,181 @@ namespace PrettyText
             int outLines = output.Length == 0 ? 0 : output.Replace("\r\n", "\n").Split('\n').Length;
             lblStats.Text = "📄 输入 行:" + inLines.ToString() + " 字符:" + input.Length.ToString() +
                             "   |   📝 输出 行:" + outLines.ToString() + " 字符:" + output.Length.ToString();
+        }
+
+        /// <summary>
+        /// 应用语法高亮
+        /// </summary>
+        /// <param name="format">格式类型</param>
+        /// <param name="text">文本内容</param>
+        private void ApplySyntaxHighlighting(string format, string text)
+        {
+            // 清除现有的样式
+            txtOutput.ClearStyle(true);
+            
+            // 根据格式类型应用不同的高亮规则
+            switch (format.ToUpper())
+            {
+                case "JSON":
+                    HighlightJson(text);
+                    break;
+                case "XML":
+                    HighlightXml(text);
+                    break;
+                default:
+                    // 对于其他格式，应用基础的主题颜色
+                    ApplyThemeColors();
+                    break;
+            }
+        }
+        
+        /// <summary>
+        /// 应用主题颜色到整个文本
+        /// </summary>
+        private void ApplyThemeColors()
+        {
+            if (isLight)
+            {
+                // 浅色主题
+                txtInput.ForeColor = txtOutput.ForeColor = Color.Black;
+                txtInput.BackColor = txtOutput.BackColor = Color.White;
+            }
+            else
+            {
+                // 深色主题
+                txtInput.ForeColor = txtOutput.ForeColor = Color.White;
+                txtInput.BackColor = txtOutput.BackColor = Color.FromArgb(31, 31, 31);
+            }
+        }
+
+        /// <summary>
+        /// JSON语法高亮
+        /// </summary>
+        /// <param name="json">JSON文本</param>
+        private void HighlightJson(string json)
+        {
+            // 应用基础主题颜色
+            ApplyThemeColors();
+            
+            if (isLight)
+            {
+                // 浅色主题的JSON高亮
+                HighlightJsonLight(json);
+            }
+            else
+            {
+                // 深色主题的JSON高亮
+                HighlightJsonDark(json);
+            }
+        }
+        
+        private void HighlightJsonLight(string json)
+        {
+            // 关键字颜色 (true, false, null)
+            HighlightPattern(json, @"\b(true|false|null)\b", Color.Blue, Color.Empty);
+            
+            // 字符串颜色
+            HighlightPattern(json, @"""([^""\\]|\\.)*""", Color.Brown, Color.Empty);
+            
+            // 数字颜色
+            HighlightPattern(json, @"\b\d+(\.\d+)?\b", Color.Green, Color.Empty);
+            
+            // 结构符号颜色
+            HighlightPattern(json, @"[{}[\]:,]", Color.Black, Color.Empty);
+        }
+        
+        private void HighlightJsonDark(string json)
+        {
+            // 关键字颜色 (true, false, null)
+            HighlightPattern(json, @"\b(true|false|null)\b", Color.Cyan, Color.Empty);
+            
+            // 字符串颜色
+            HighlightPattern(json, @"""([^""\\]|\\.)*""", Color.Orange, Color.Empty);
+            
+            // 数字颜色
+            HighlightPattern(json, @"\b\d+(\.\d+)?\b", Color.LimeGreen, Color.Empty);
+            
+            // 结构符号颜色
+            HighlightPattern(json, @"[{}[\]:,]", Color.White, Color.Empty);
+        }
+        
+        /// <summary>
+        /// XML语法高亮
+        /// </summary>
+        /// <param name="xml">XML文本</param>
+        private void HighlightXml(string xml)
+        {
+            // 应用基础主题颜色
+            ApplyThemeColors();
+            
+            if (isLight)
+            {
+                // 浅色主题的XML高亮
+                HighlightXmlLight(xml);
+            }
+            else
+            {
+                // 深色主题的XML高亮
+                HighlightXmlDark(xml);
+            }
+        }
+        
+        private void HighlightXmlLight(string xml)
+        {
+            // 标签颜色
+            HighlightPattern(xml, @"<[^>]*>", Color.Blue, Color.Empty);
+            
+            // 属性名颜色
+            HighlightPattern(xml, @"\s+(\w+(?==))", Color.Red, Color.Empty);
+            
+            // 属性值颜色
+            HighlightPattern(xml, @"=""([^""]*)""", Color.Brown, Color.Empty);
+            
+            // 注释颜色
+            HighlightPattern(xml, @"<!--[\s\S]*?-->", Color.Green, Color.Empty);
+        }
+        
+        private void HighlightXmlDark(string xml)
+        {
+            // 标签颜色
+            HighlightPattern(xml, @"<[^>]*>", Color.Cyan, Color.Empty);
+            
+            // 属性名颜色
+            HighlightPattern(xml, @"\s+(\w+(?==))", Color.Orange, Color.Empty);
+            
+            // 属性值颜色
+            HighlightPattern(xml, @"=""([^""]*)""", Color.Yellow, Color.Empty);
+            
+            // 注释颜色
+            HighlightPattern(xml, @"<!--[\s\S]*?-->", Color.LimeGreen, Color.Empty);
+        }
+        
+        /// <summary>
+        /// 使用正则表达式高亮文本模式
+        /// </summary>
+        /// <param name="text">要处理的文本</param>
+        /// <param name="pattern">正则表达式模式</param>
+        /// <param name="foreColor">前景色</param>
+        /// <param name="backColor">背景色</param>
+        private void HighlightPattern(string text, string pattern, Color foreColor, Color backColor)
+        {
+            try
+            {
+                var regex = new Regex(pattern, RegexOptions.Multiline);
+                var matches = regex.Matches(text);
+                
+                foreach (Match match in matches)
+                {
+                    if (match.Length > 0)
+                    {
+                        txtOutput.SetStyle(match.Index, match.Length, txtOutput.Font, foreColor, backColor);
+                    }
+                }
+            }
+            catch
+            {
+                // 忽略正则表达式错误
+            }
         }
 
         private void TreeOutput_MouseDown(object sender, MouseEventArgs e)

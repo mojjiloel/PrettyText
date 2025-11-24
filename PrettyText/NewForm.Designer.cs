@@ -227,88 +227,98 @@
             // 
             // btnPretty
             // 
-            this.btnPretty.IconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"128\" height=\"128\" viewBox=\"0 0 24 " +
-    "24\"><path fill=\"currentColor\" d=\"M7 15v2h10v-2zm-4 6h18v-2H3zm0-8h18v-2H3zm4-6v2" +
+            this.btnPretty.BorderWidth = 1F;
+            this.btnPretty.IconSvg = "<svg viewBox=\"0 0 24 24\"><path d=\"M7 15v2h10v-2zm-4 6h18v-2H3zm0-8h18v-2H3zm4-6v2" +
     "h10V7zM3 3v2h18V3z\"/></svg>";
+            this.btnPretty.JoinMode = AntdUI.TJoinMode.Left;
             this.btnPretty.Location = new System.Drawing.Point(10, 15);
             this.btnPretty.Name = "btnPretty";
-            this.btnPretty.Size = new System.Drawing.Size(80, 30);
+            this.btnPretty.Size = new System.Drawing.Size(50, 30);
             this.btnPretty.TabIndex = 0;
-            this.btnPretty.Text = "美化";
             // 
             // btnMinify
             // 
-            this.btnMinify.IconSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"128\" height=\"128\" viewBox=\"0 0 24 " +
-    "24\"><path fill=\"currentColor\" d=\"M3 21h18v-2H3zm0-4h18v-2H3zm0-4h18v-2H3zm0-4h18" +
+            this.btnMinify.BorderWidth = 1F;
+            this.btnMinify.IconSvg = "<svg viewBox=\"0 0 24 24\"><path d=\"M3 21h18v-2H3zm0-4h18v-2H3zm0-4h18v-2H3zm0-4h18" +
     "V7H3zm0-6v2h18V3z\"/></svg>";
-            this.btnMinify.Location = new System.Drawing.Point(100, 15);
+            this.btnMinify.JoinMode = AntdUI.TJoinMode.LR;
+            this.btnMinify.Location = new System.Drawing.Point(60, 15);
             this.btnMinify.Name = "btnMinify";
-            this.btnMinify.Size = new System.Drawing.Size(80, 30);
+            this.btnMinify.Size = new System.Drawing.Size(50, 30);
             this.btnMinify.TabIndex = 1;
-            this.btnMinify.Text = "压缩";
             // 
             // btnDetect
             // 
+            this.btnDetect.BorderWidth = 1F;
             this.btnDetect.IconSvg = resources.GetString("btnDetect.IconSvg");
-            this.btnDetect.Location = new System.Drawing.Point(190, 15);
+            this.btnDetect.JoinMode = AntdUI.TJoinMode.Right;
+            this.btnDetect.Location = new System.Drawing.Point(110, 15);
             this.btnDetect.Name = "btnDetect";
-            this.btnDetect.Size = new System.Drawing.Size(100, 30);
+            this.btnDetect.Size = new System.Drawing.Size(50, 30);
             this.btnDetect.TabIndex = 2;
-            this.btnDetect.Text = "自动识别";
             // 
             // cboFormat
             // 
-            this.cboFormat.Location = new System.Drawing.Point(300, 15);
+            this.cboFormat.Location = new System.Drawing.Point(158, 15);
             this.cboFormat.Name = "cboFormat";
             this.cboFormat.Size = new System.Drawing.Size(120, 30);
             this.cboFormat.TabIndex = 3;
             // 
             // btnCopy
             // 
+            this.btnCopy.BorderWidth = 1F;
             this.btnCopy.IconSvg = resources.GetString("btnCopy.IconSvg");
-            this.btnCopy.Location = new System.Drawing.Point(430, 15);
+            this.btnCopy.JoinMode = AntdUI.TJoinMode.Left;
+            this.btnCopy.Location = new System.Drawing.Point(288, 15);
             this.btnCopy.Name = "btnCopy";
-            this.btnCopy.Size = new System.Drawing.Size(70, 30);
+            this.btnCopy.Size = new System.Drawing.Size(50, 30);
             this.btnCopy.TabIndex = 4;
-            this.btnCopy.Text = "复制";
             // 
             // btnOpen
             // 
-            this.btnOpen.IconSvg = resources.GetString("btnOpen.IconSvg");
-            this.btnOpen.Location = new System.Drawing.Point(510, 15);
+            this.btnOpen.BorderWidth = 1F;
+            this.btnOpen.IconSvg = "<svg viewBox=\"0 0 24 24\"><path d=\"M15 22H6c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h8l6 6v" +
+    "6h-2V9h-5V4H6v16h9zm4-.34v-2.24l2.95 2.95l1.41-1.41L20.41 18h2.24v-2H17v5.66z\"/>" +
+    "</svg>";
+            this.btnOpen.JoinMode = AntdUI.TJoinMode.LR;
+            this.btnOpen.Location = new System.Drawing.Point(338, 15);
             this.btnOpen.Name = "btnOpen";
-            this.btnOpen.Size = new System.Drawing.Size(70, 30);
+            this.btnOpen.Size = new System.Drawing.Size(50, 30);
             this.btnOpen.TabIndex = 5;
-            this.btnOpen.Text = "打开";
             // 
             // btnSave
             // 
+            this.btnSave.BorderWidth = 1F;
             this.btnSave.IconSvg = resources.GetString("btnSave.IconSvg");
-            this.btnSave.Location = new System.Drawing.Point(590, 15);
+            this.btnSave.JoinMode = AntdUI.TJoinMode.Right;
+            this.btnSave.Location = new System.Drawing.Point(388, 15);
             this.btnSave.Name = "btnSave";
-            this.btnSave.Size = new System.Drawing.Size(70, 30);
+            this.btnSave.Size = new System.Drawing.Size(50, 30);
             this.btnSave.TabIndex = 6;
-            this.btnSave.Text = "保存";
             // 
             // btnExpandAll
             // 
-            this.btnExpandAll.Location = new System.Drawing.Point(670, 15);
+            this.btnExpandAll.BorderWidth = 1F;
+            this.btnExpandAll.JoinMode = AntdUI.TJoinMode.Left;
+            this.btnExpandAll.Location = new System.Drawing.Point(616, 15);
             this.btnExpandAll.Name = "btnExpandAll";
-            this.btnExpandAll.Size = new System.Drawing.Size(90, 30);
+            this.btnExpandAll.Size = new System.Drawing.Size(50, 30);
             this.btnExpandAll.TabIndex = 7;
-            this.btnExpandAll.Text = "➕ 展开全部";
+            this.btnExpandAll.Text = "➕ ";
             // 
             // btnCollapseAll
             // 
-            this.btnCollapseAll.Location = new System.Drawing.Point(770, 15);
+            this.btnCollapseAll.BorderWidth = 1F;
+            this.btnCollapseAll.JoinMode = AntdUI.TJoinMode.Right;
+            this.btnCollapseAll.Location = new System.Drawing.Point(665, 15);
             this.btnCollapseAll.Name = "btnCollapseAll";
-            this.btnCollapseAll.Size = new System.Drawing.Size(90, 30);
+            this.btnCollapseAll.Size = new System.Drawing.Size(50, 30);
             this.btnCollapseAll.TabIndex = 8;
-            this.btnCollapseAll.Text = "➖ 折叠全部";
+            this.btnCollapseAll.Text = "➖ ";
             // 
             // txtFind
             // 
-            this.txtFind.Location = new System.Drawing.Point(870, 15);
+            this.txtFind.Location = new System.Drawing.Point(728, 15);
             this.txtFind.Name = "txtFind";
             this.txtFind.PlaceholderText = "🔍 查找...";
             this.txtFind.Size = new System.Drawing.Size(120, 30);
@@ -316,7 +326,9 @@
             // 
             // btnFindPrev
             // 
-            this.btnFindPrev.Location = new System.Drawing.Point(1000, 15);
+            this.btnFindPrev.BorderWidth = 1F;
+            this.btnFindPrev.JoinMode = AntdUI.TJoinMode.Left;
+            this.btnFindPrev.Location = new System.Drawing.Point(858, 15);
             this.btnFindPrev.Name = "btnFindPrev";
             this.btnFindPrev.Size = new System.Drawing.Size(30, 30);
             this.btnFindPrev.TabIndex = 10;
@@ -324,7 +336,9 @@
             // 
             // btnFindNext
             // 
-            this.btnFindNext.Location = new System.Drawing.Point(1040, 15);
+            this.btnFindNext.BorderWidth = 1F;
+            this.btnFindNext.JoinMode = AntdUI.TJoinMode.LR;
+            this.btnFindNext.Location = new System.Drawing.Point(888, 15);
             this.btnFindNext.Name = "btnFindNext";
             this.btnFindNext.Size = new System.Drawing.Size(30, 30);
             this.btnFindNext.TabIndex = 11;
@@ -332,7 +346,9 @@
             // 
             // btnWrap
             // 
-            this.btnWrap.Location = new System.Drawing.Point(1080, 15);
+            this.btnWrap.BorderWidth = 1F;
+            this.btnWrap.JoinMode = AntdUI.TJoinMode.Right;
+            this.btnWrap.Location = new System.Drawing.Point(918, 15);
             this.btnWrap.Name = "btnWrap";
             this.btnWrap.Size = new System.Drawing.Size(30, 30);
             this.btnWrap.TabIndex = 12;
@@ -340,19 +356,19 @@
             // 
             // cboHistory
             // 
-            this.cboHistory.Location = new System.Drawing.Point(1116, 15);
+            this.cboHistory.Location = new System.Drawing.Point(974, 15);
             this.cboHistory.Name = "cboHistory";
             this.cboHistory.Size = new System.Drawing.Size(150, 30);
             this.cboHistory.TabIndex = 14;
             // 
             // btnFont
             // 
+            this.btnFont.BorderWidth = 1F;
             this.btnFont.IconSvg = resources.GetString("btnFont.IconSvg");
-            this.btnFont.Location = new System.Drawing.Point(1272, 15);
+            this.btnFont.Location = new System.Drawing.Point(1130, 15);
             this.btnFont.Name = "btnFont";
-            this.btnFont.Size = new System.Drawing.Size(70, 30);
+            this.btnFont.Size = new System.Drawing.Size(50, 30);
             this.btnFont.TabIndex = 15;
-            this.btnFont.Text = "字体";
             // 
             // statusPanel
             // 
