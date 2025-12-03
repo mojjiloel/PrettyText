@@ -83,6 +83,8 @@ namespace PrettyText
             btnFont.Click += btnFont_Click;
 
             button_color.Click += Button_color_Click;
+
+            BindButtonWithToolTip(panelToolbar);
         }
 
         private void Button_color_Click(object sender, EventArgs e)
@@ -823,6 +825,75 @@ namespace PrettyText
 
                 // 显示右键菜单
                 AntdUI.ContextMenuStrip.open(treeOutput, OnContextMenuItemClick, menuItems.ToArray());
+            }
+        }
+
+        private void BindButtonWithToolTip(Control parent)
+        {
+            foreach (Control control in parent.Controls)
+            {
+                if (control is AntdUI.Button button)
+                {
+                    AntdUI.TooltipComponent tooltip = new AntdUI.TooltipComponent()
+                    {
+                        Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Regular, GraphicsUnit.Point, ((byte)(134))),
+                    };
+
+                    var name = control.Name;
+                    switch (name)
+                    {
+                        case "btnPretty":
+                            tooltip.ArrowAlign = AntdUI.TAlign.Bottom;
+                            tooltip.SetTip(control, "格式化");
+                            break;
+                        case "btnMinify":
+                            tooltip.ArrowAlign = AntdUI.TAlign.Bottom;
+                            tooltip.SetTip(control, "压缩");
+                            break;
+                        case "btnDetect":
+                            tooltip.ArrowAlign = AntdUI.TAlign.Bottom;
+                            tooltip.SetTip(control, "自动检测格式");
+                            break;
+                        case "btnCopy":
+                            tooltip.ArrowAlign = AntdUI.TAlign.Bottom;
+                            tooltip.SetTip(control, "复制");
+                            break;
+                        case "btnOpen":
+                            tooltip.ArrowAlign = AntdUI.TAlign.Bottom;
+                            tooltip.SetTip(control, "打开文件");
+                            break;
+                        case "btnSave":
+                            tooltip.ArrowAlign = AntdUI.TAlign.Bottom;
+                            tooltip.SetTip(control, "保存文件");
+                            break;
+                        case "btnExpandAll":
+                            tooltip.ArrowAlign = AntdUI.TAlign.Bottom;
+                            tooltip.SetTip(control, "展开所有节点");
+                            break;
+                        case "btnCollapseAll":
+                            tooltip.ArrowAlign = AntdUI.TAlign.Bottom;
+                            tooltip.SetTip(control, "折叠所有节点");
+                            break;
+                        case "btnFindPrev":
+                            tooltip.ArrowAlign = AntdUI.TAlign.Bottom;
+                            tooltip.SetTip(control, "查找上一个");
+                            break;
+                        case "btnFindNext":
+                            tooltip.ArrowAlign = AntdUI.TAlign.Bottom;
+                            tooltip.SetTip(control, "查找下一个");
+                            break;
+                        case "btnWrap":
+                            tooltip.ArrowAlign = AntdUI.TAlign.Bottom;
+                            tooltip.SetTip(control, "切换换行");
+                            break;
+                        case "btnFont":
+                            tooltip.ArrowAlign = AntdUI.TAlign.Bottom;
+                            tooltip.SetTip(control, "字体设置");
+                            break;
+                        default:
+                            break;
+                    }
+                }
             }
         }
 

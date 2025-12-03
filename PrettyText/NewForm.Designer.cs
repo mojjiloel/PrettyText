@@ -28,7 +28,7 @@
         /// </summary>
         private void InitializeComponent()
         {
-            AntdUI.Tabs.StyleLine styleLine6 = new AntdUI.Tabs.StyleLine();
+            AntdUI.Tabs.StyleLine styleLine2 = new AntdUI.Tabs.StyleLine();
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(NewForm));
             this.pageHeader1 = new AntdUI.PageHeader();
             this.button_color = new AntdUI.Button();
@@ -160,7 +160,7 @@
             this.tabControl1.Pages.Add(this.tabPage1);
             this.tabControl1.Pages.Add(this.tabPage2);
             this.tabControl1.Size = new System.Drawing.Size(727, 448);
-            this.tabControl1.Style = styleLine6;
+            this.tabControl1.Style = styleLine2;
             this.tabControl1.TabIndex = 0;
             // 
             // tabPage1
@@ -320,7 +320,8 @@
             // 
             this.txtFind.Location = new System.Drawing.Point(728, 15);
             this.txtFind.Name = "txtFind";
-            this.txtFind.PlaceholderText = "🔍 查找...";
+            this.txtFind.PlaceholderText = "查找...";
+            this.txtFind.PrefixSvg = resources.GetString("txtFind.PrefixSvg");
             this.txtFind.Size = new System.Drawing.Size(120, 30);
             this.txtFind.TabIndex = 9;
             // 
@@ -407,6 +408,7 @@
             this.Controls.Add(this.panelToolbar);
             this.Controls.Add(this.pageHeader1);
             this.Font = new System.Drawing.Font("微软雅黑", 9F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(134)));
+            this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
             this.Margin = new System.Windows.Forms.Padding(4);
             this.Name = "NewForm";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
