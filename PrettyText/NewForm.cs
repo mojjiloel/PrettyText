@@ -78,7 +78,6 @@ namespace PrettyText
             btnCollapseAll.Click += btnCollapseAll_Click;
             btnFindPrev.Click += btnFindPrev_Click;
             btnFindNext.Click += btnFindNext_Click;
-            btnWrap.Click += btnWrap_Click;
             cboHistory.SelectedIndexChanged += cboHistory_SelectedIndexChanged;
             btnFont.Click += btnFont_Click;
 
@@ -462,7 +461,8 @@ namespace PrettyText
                 if (NodeMatches(node, _lastFind))
                 {
                     _findCursor = node;
-                    // 选择节点（如果AntdUI.Tree支持）
+                    treeOutput.Focus(_findCursor);
+                    treeOutput.Select(_findCursor);
                     lblStatus.Text = "✅ 找到匹配项";
                     return;
                 }
@@ -485,7 +485,8 @@ namespace PrettyText
                 if (NodeMatches(node, _lastFind))
                 {
                     _findCursor = node;
-                    // 选择节点（如果AntdUI.Tree支持）
+                    treeOutput.Focus(_findCursor);
+                    treeOutput.Select(_findCursor);
                     lblStatus.Text = "✅ 找到匹配项";
                     return;
                 }
@@ -517,12 +518,6 @@ namespace PrettyText
         {
             return (node.Text != null && node.Text.IndexOf(searchText, StringComparison.OrdinalIgnoreCase) >= 0) ||
                    (Convert.ToString(node.Tag) ?? string.Empty).IndexOf(searchText, StringComparison.OrdinalIgnoreCase) >= 0;
-        }
-
-        private void btnWrap_Click(object sender, EventArgs e)
-        {
-            // 切换文本换行
-            lblStatus.Text = "✅ 切换换行模式";
         }
 
         private void AppendHistory(string text)
@@ -881,10 +876,6 @@ namespace PrettyText
                         case "btnFindNext":
                             tooltip.ArrowAlign = AntdUI.TAlign.Bottom;
                             tooltip.SetTip(control, "查找下一个");
-                            break;
-                        case "btnWrap":
-                            tooltip.ArrowAlign = AntdUI.TAlign.Bottom;
-                            tooltip.SetTip(control, "切换换行");
                             break;
                         case "btnFont":
                             tooltip.ArrowAlign = AntdUI.TAlign.Bottom;

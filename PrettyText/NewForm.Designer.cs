@@ -54,7 +54,6 @@
             this.txtFind = new AntdUI.Input();
             this.btnFindPrev = new AntdUI.Button();
             this.btnFindNext = new AntdUI.Button();
-            this.btnWrap = new AntdUI.Button();
             this.cboHistory = new AntdUI.Select();
             this.btnFont = new AntdUI.Button();
             this.statusPanel = new AntdUI.Panel();
@@ -132,6 +131,7 @@
             // 
             // txtInput
             // 
+            this.txtInput.AutoScroll = true;
             this.txtInput.Dock = System.Windows.Forms.DockStyle.Fill;
             this.txtInput.Location = new System.Drawing.Point(0, 0);
             this.txtInput.Multiline = true;
@@ -151,14 +151,15 @@
             // 
             // tabControl1
             // 
-            this.tabControl1.Controls.Add(this.tabPage1);
             this.tabControl1.Controls.Add(this.tabPage2);
-            this.tabControl1.Cursor = System.Windows.Forms.Cursors.Default;
+            this.tabControl1.Controls.Add(this.tabPage1);
+            this.tabControl1.Cursor = System.Windows.Forms.Cursors.Hand;
             this.tabControl1.Dock = System.Windows.Forms.DockStyle.Fill;
             this.tabControl1.Location = new System.Drawing.Point(0, 0);
             this.tabControl1.Name = "tabControl1";
             this.tabControl1.Pages.Add(this.tabPage1);
             this.tabControl1.Pages.Add(this.tabPage2);
+            this.tabControl1.SelectedIndex = 1;
             this.tabControl1.Size = new System.Drawing.Size(727, 448);
             this.tabControl1.Style = styleLine2;
             this.tabControl1.TabIndex = 0;
@@ -175,6 +176,7 @@
             // 
             // txtOutput
             // 
+            this.txtOutput.AutoScroll = true;
             this.txtOutput.Dock = System.Windows.Forms.DockStyle.Fill;
             this.txtOutput.Location = new System.Drawing.Point(0, 0);
             this.txtOutput.Multiline = true;
@@ -216,7 +218,6 @@
             this.panelToolbar.Controls.Add(this.txtFind);
             this.panelToolbar.Controls.Add(this.btnFindPrev);
             this.panelToolbar.Controls.Add(this.btnFindNext);
-            this.panelToolbar.Controls.Add(this.btnWrap);
             this.panelToolbar.Controls.Add(this.cboHistory);
             this.panelToolbar.Controls.Add(this.btnFont);
             this.panelToolbar.Dock = System.Windows.Forms.DockStyle.Top;
@@ -329,7 +330,7 @@
             // 
             this.btnFindPrev.BorderWidth = 1F;
             this.btnFindPrev.JoinMode = AntdUI.TJoinMode.Left;
-            this.btnFindPrev.Location = new System.Drawing.Point(858, 15);
+            this.btnFindPrev.Location = new System.Drawing.Point(854, 15);
             this.btnFindPrev.Name = "btnFindPrev";
             this.btnFindPrev.Size = new System.Drawing.Size(30, 30);
             this.btnFindPrev.TabIndex = 10;
@@ -338,26 +339,16 @@
             // btnFindNext
             // 
             this.btnFindNext.BorderWidth = 1F;
-            this.btnFindNext.JoinMode = AntdUI.TJoinMode.LR;
-            this.btnFindNext.Location = new System.Drawing.Point(888, 15);
+            this.btnFindNext.JoinMode = AntdUI.TJoinMode.Right;
+            this.btnFindNext.Location = new System.Drawing.Point(884, 15);
             this.btnFindNext.Name = "btnFindNext";
             this.btnFindNext.Size = new System.Drawing.Size(30, 30);
             this.btnFindNext.TabIndex = 11;
             this.btnFindNext.Text = "►";
             // 
-            // btnWrap
-            // 
-            this.btnWrap.BorderWidth = 1F;
-            this.btnWrap.JoinMode = AntdUI.TJoinMode.Right;
-            this.btnWrap.Location = new System.Drawing.Point(918, 15);
-            this.btnWrap.Name = "btnWrap";
-            this.btnWrap.Size = new System.Drawing.Size(30, 30);
-            this.btnWrap.TabIndex = 12;
-            this.btnWrap.Text = "↵";
-            // 
             // cboHistory
             // 
-            this.cboHistory.Location = new System.Drawing.Point(974, 15);
+            this.cboHistory.Location = new System.Drawing.Point(920, 15);
             this.cboHistory.Name = "cboHistory";
             this.cboHistory.Size = new System.Drawing.Size(150, 30);
             this.cboHistory.TabIndex = 14;
@@ -366,7 +357,7 @@
             // 
             this.btnFont.BorderWidth = 1F;
             this.btnFont.IconSvg = resources.GetString("btnFont.IconSvg");
-            this.btnFont.Location = new System.Drawing.Point(1130, 15);
+            this.btnFont.Location = new System.Drawing.Point(1076, 15);
             this.btnFont.Name = "btnFont";
             this.btnFont.Size = new System.Drawing.Size(50, 30);
             this.btnFont.TabIndex = 15;
@@ -453,7 +444,6 @@
         private AntdUI.Input txtFind;
         private AntdUI.Button btnFindPrev;
         private AntdUI.Button btnFindNext;
-        private AntdUI.Button btnWrap;
         private AntdUI.Select cboHistory;
         private AntdUI.Button btnFont;
         private AntdUI.Panel statusPanel;
