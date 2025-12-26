@@ -1,4 +1,6 @@
-﻿using System;
+﻿using PrettyText.TextFormatters;
+using PrettyText.Utils;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
@@ -7,8 +9,7 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions; // 添加正则表达式支持
 using System.Windows.Forms;
-using PrettyText.TextFormatters;
-using PrettyText.Utils;
+using static PrettyText.Utils.ClassGenerator;
 
 namespace PrettyText
 {
@@ -84,6 +85,22 @@ namespace PrettyText
             button_color.Click += Button_color_Click;
 
             BindButtonWithToolTip(panelToolbar);
+
+            select1.SelectedIndex = 0;
+            
+            // 绑定Export tab事件
+            select1.SelectedIndexChanged += Select1_SelectedIndexChanged;
+            tabControl1.SelectedIndexChanged += TabControl1_SelectedIndexChanged;
+        }
+
+        private void TabControl1_SelectedIndexChanged(object sender, AntdUI.IntEventArgs e)
+        {
+            var tabIndex = e.Value;
+            if (tabIndex == 2)
+            {
+                // 切换到Export标签页时，更新代码预览
+                GenerateClassFromInput();
+            }
         }
 
         private void Button_color_Click(object sender, EventArgs e)
@@ -105,6 +122,21 @@ namespace PrettyText
         {
             var format = cboFormat.Text ?? "";
             ApplySyntaxHighlighting(format, txtOutput.Text ?? "");
+
+            ClassGenerator.LanguageType languageType;
+            string selectedLanguage = select1.Text;
+
+            if (selectedLanguage == "C#")
+            {
+                languageType = ClassGenerator.LanguageType.CSharp;
+            }
+            else
+            {
+                languageType = ClassGenerator.LanguageType.Java;
+            }
+
+            // 应用语法高亮
+            ApplySyntaxHighlightingForCode(languageType, input1.Text);
         }
         
         /// <summary>
@@ -654,7 +686,7 @@ namespace PrettyText
         }
         
         /// <summary>
-        /// 应用主题颜色到整个文本
+        /// 应用主题颜色到整个窗体
         /// </summary>
         private void ApplyThemeColors()
         {
@@ -696,31 +728,31 @@ namespace PrettyText
         private void HighlightJsonLight(string json)
         {
             // 关键字颜色 (true, false, null)
-            HighlightPattern(json, @"\b(true|false|null)\b", Color.Blue, Color.Empty);
+            HighlightPattern(txtOutput, json, @"\b(true|false|null)\b", Color.Blue, Color.Empty);
             
             // 字符串颜色
-            HighlightPattern(json, @"""([^""\\]|\\.)*""", Color.Brown, Color.Empty);
+            HighlightPattern(txtOutput, json, @"""([^""\\]|\\.)*""", Color.Brown, Color.Empty);
             
             // 数字颜色
-            HighlightPattern(json, @"\b\d+(\.\d+)?\b", Color.Green, Color.Empty);
+            HighlightPattern(txtOutput, json, @"\b\d+(\.\d+)?\b", Color.Green, Color.Empty);
             
             // 结构符号颜色
-            HighlightPattern(json, @"[{}[\]:,]", Color.Black, Color.Empty);
+            HighlightPattern(txtOutput, json, @"[{}[\]:,]", Color.Black, Color.Empty);
         }
         
         private void HighlightJsonDark(string json)
         {
             // 关键字颜色 (true, false, null)
-            HighlightPattern(json, @"\b(true|false|null)\b", Color.Cyan, Color.Empty);
+            HighlightPattern(txtOutput, json, @"\b(true|false|null)\b", Color.Cyan, Color.Empty);
             
             // 字符串颜色
-            HighlightPattern(json, @"""([^""\\]|\\.)*""", Color.Orange, Color.Empty);
+            HighlightPattern(txtOutput, json, @"""([^""\\]|\\.)*""", Color.Orange, Color.Empty);
             
             // 数字颜色
-            HighlightPattern(json, @"\b\d+(\.\d+)?\b", Color.LimeGreen, Color.Empty);
+            HighlightPattern(txtOutput, json, @"\b\d+(\.\d+)?\b", Color.LimeGreen, Color.Empty);
             
             // 结构符号颜色
-            HighlightPattern(json, @"[{}[\]:,]", Color.White, Color.Empty);
+            HighlightPattern(txtOutput, json, @"[{}[\]:,]", Color.White, Color.Empty);
         }
         
         /// <summary>
@@ -747,52 +779,56 @@ namespace PrettyText
         private void HighlightXmlLight(string xml)
         {
             // 标签颜色
-            HighlightPattern(xml, @"<[^>]*>", Color.Blue, Color.Empty);
+            HighlightPattern(txtOutput, xml, @"<[^>]*>", Color.Blue, Color.Empty);
             
             // 属性名颜色
-            HighlightPattern(xml, @"\s+(\w+(?==))", Color.Red, Color.Empty);
+            HighlightPattern(txtOutput, xml, @"\s+(\w+(?==))", Color.Red, Color.Empty);
             
             // 属性值颜色
-            HighlightPattern(xml, @"=""([^""]*)""", Color.Brown, Color.Empty);
+            HighlightPattern(txtOutput, xml, @"=""([^""]*)""", Color.Brown, Color.Empty);
             
             // 注释颜色
-            HighlightPattern(xml, @"<!--[\s\S]*?-->", Color.Green, Color.Empty);
+            HighlightPattern(txtOutput, xml, @"<!--[\s\S]*?-->", Color.Green, Color.Empty);
         }
         
         private void HighlightXmlDark(string xml)
         {
             // 标签颜色
-            HighlightPattern(xml, @"<[^>]*>", Color.Cyan, Color.Empty);
+            HighlightPattern(txtOutput, xml, @"<[^>]*>", Color.Cyan, Color.Empty);
             
             // 属性名颜色
-            HighlightPattern(xml, @"\s+(\w+(?==))", Color.Orange, Color.Empty);
+            HighlightPattern(txtOutput, xml, @"\s+(\w+(?==))", Color.Orange, Color.Empty);
             
             // 属性值颜色
-            HighlightPattern(xml, @"=""([^""]*)""", Color.Yellow, Color.Empty);
+            HighlightPattern(txtOutput, xml, @"=""([^""]*)""", Color.Yellow, Color.Empty);
             
             // 注释颜色
-            HighlightPattern(xml, @"<!--[\s\S]*?-->", Color.LimeGreen, Color.Empty);
+            HighlightPattern(txtOutput, xml, @"<!--[\s\S]*?-->", Color.LimeGreen, Color.Empty);
         }
         
         /// <summary>
-        /// 使用正则表达式高亮文本模式
+        /// 使用正则表达式高亮文本模式到指定控件
         /// </summary>
+        /// <param name="control">要应用高亮的控件</param>
         /// <param name="text">要处理的文本</param>
         /// <param name="pattern">正则表达式模式</param>
         /// <param name="foreColor">前景色</param>
         /// <param name="backColor">背景色</param>
-        private void HighlightPattern(string text, string pattern, Color foreColor, Color backColor)
+        private void HighlightPattern(AntdUI.Input control, string text, string pattern, Color foreColor, Color backColor)
         {
             try
             {
                 var regex = new Regex(pattern, RegexOptions.Multiline);
                 var matches = regex.Matches(text);
-                
+
                 foreach (Match match in matches)
                 {
                     if (match.Length > 0)
                     {
-                        txtOutput.SetStyle(match.Index, match.Length, txtOutput.Font, foreColor, backColor);
+                        // 修复换行符差异导致的索引偏移问题
+                        // 将基于原始文本的索引转换为控件内部使用的索引
+                        int correctedIndex = ConvertIndexForControl(text, control.Text, match.Index);
+                        control.SetStyle(correctedIndex, match.Length, control.Font, foreColor, backColor);
                     }
                 }
             }
@@ -800,6 +836,33 @@ namespace PrettyText
             {
                 // 忽略正则表达式错误
             }
+        }
+        
+        /// <summary>
+        /// 将原始文本中的索引转换为控件内部使用的索引（处理换行符差异）
+        /// </summary>
+        /// <param name="originalText">原始文本（可能包含\r\n）</param>
+        /// <param name="controlText">控件内部文本（通常为\n）</param>
+        /// <param name="originalIndex">原始文本中的索引</param>
+        /// <returns>控件内部对应的索引</returns>
+        private int ConvertIndexForControl(string originalText, string controlText, int originalIndex)
+        {
+            // 如果索引在范围之外，直接返回
+            if (originalIndex <= 0 || originalIndex >= originalText.Length)
+                return originalIndex;
+            
+            // 计算到原始索引位置之前的换行符数量差异
+            int crlfCountBeforeIndex = 0;
+            for (int i = 0; i < originalIndex && i < originalText.Length - 1; i++)
+            {
+                if (originalText[i] == '\r' && originalText[i + 1] == '\n')
+                {
+                    crlfCountBeforeIndex++;
+                }
+            }
+            
+            // 控件内部可能将\r\n统一为\n，所以索引需要向前调整
+            return originalIndex - crlfCountBeforeIndex;
         }
 
         private void TreeOutput_MouseDown(object sender, MouseEventArgs e)
@@ -957,6 +1020,200 @@ namespace PrettyText
                     // 可以在这里添加实际的查找逻辑
                     lblStatus.Text = "🔍 已在查找框中填入节点文本";
                 }
+            }
+        }
+        
+        private void Select1_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            GenerateClassFromInput();
+        }
+        
+        /// <summary>
+        /// 根据输入生成类定义
+        /// </summary>
+        private void GenerateClassFromInput()
+        {
+            try
+            {
+                // 获取输入文本（来自txtInput或txtOutput）
+                string inputText = txtInput.Text;
+                if (string.IsNullOrWhiteSpace(inputText))
+                {
+                    inputText = txtOutput.Text;
+                }
+                
+                if (string.IsNullOrWhiteSpace(inputText))
+                {
+                    input1.Text = "// 请在左侧或右侧输入JSON或XML数据";
+                    lblStatus.Text = "⚠️ 请输入JSON或XML数据";
+                    return;
+                }
+                
+                // 确定目标语言
+                ClassGenerator.LanguageType languageType;
+                string selectedLanguage = select1.Text;
+                
+                if (selectedLanguage == "C#")
+                {
+                    languageType = ClassGenerator.LanguageType.CSharp;
+                }
+                else if (selectedLanguage == "Java")
+                {
+                    languageType = ClassGenerator.LanguageType.Java;
+                }
+                else
+                {
+                    input1.Text = "// 请选择目标语言 (C# 或 Java)";
+                    lblStatus.Text = "⚠️ 请选择目标语言";
+                    return;
+                }
+                inputText = inputText.Trim();
+                // 生成类名 - 可以从第一个大括号或尖括号前的标识符提取，或者使用默认名称
+                string className = ExtractClassName(inputText) ?? "GeneratedClass";
+                
+                // 生成类定义
+                string generatedCode = ClassGenerator.GenerateClassFromInput(
+                    inputText, 
+                    languageType, 
+                    className);
+                
+                // 显示生成的代码
+                input1.Text = generatedCode;
+                
+                // 应用语法高亮
+                ApplySyntaxHighlightingForCode(languageType, generatedCode);
+                
+                lblStatus.Text = $"✅ 已生成 {selectedLanguage} 类定义";
+            }
+            catch (Exception ex)
+            {
+                input1.Text = $"// 生成错误: {ex.Message}";
+                lblStatus.Text = $"❌ 生成失败: {ex.Message}";
+            }
+        }
+        
+        /// <summary>
+        /// 从输入文本中提取类名
+        /// </summary>
+        /// <param name="input">输入文本</param>
+        /// <returns>提取的类名或null</returns>
+        private string ExtractClassName(string input)
+        {
+            if (string.IsNullOrWhiteSpace(input)) return null;
+            
+            var trimmed = input.TrimStart();
+            
+            try
+            {
+                if (trimmed.StartsWith("{"))
+                {
+                    // JSON对象 - 使用默认名称
+                    return "JsonModel";
+                }
+                else if (trimmed.StartsWith("["))
+                {
+                    // JSON数组 - 使用默认名称
+                    return "JsonList";
+                }
+                else if (trimmed.StartsWith("<"))
+                {
+                    // XML - 提取根元素名称
+                    var match = System.Text.RegularExpressions.Regex.Match(trimmed, 
+                        @"<([a-zA-Z][^\s\/>]*)", 
+                        System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    if (match.Success)
+                    {
+                        return System.Threading.Thread.CurrentThread.CurrentCulture.TextInfo.ToTitleCase(match.Groups[1].Value);
+                    }
+                }
+            }
+            catch
+            {
+                // 如果提取失败，返回默认名称
+            }
+            
+            return null;
+        }
+        
+        /// <summary>
+        /// 为生成的代码应用语法高亮
+        /// </summary>
+        /// <param name="languageType">语言类型</param>
+        /// <param name="code">代码文本</param>
+        private void ApplySyntaxHighlightingForCode(ClassGenerator.LanguageType languageType, string code)
+        {
+            // 清除现有样式
+            input1.ClearStyle(true);
+            
+            // 应用基础主题颜色
+            ApplyThemeColorsToControl(input1);
+            
+            // 为C#和Java代码应用基本的语法高亮
+            if (languageType == ClassGenerator.LanguageType.CSharp)
+            {
+                ApplyCSharpSyntaxHighlighting(input1, code);
+            }
+            else if (languageType == ClassGenerator.LanguageType.Java)
+            {
+                ApplyJavaSyntaxHighlighting(input1, code);
+            }
+        }
+        
+        private void ApplyCSharpSyntaxHighlighting(AntdUI.Input control, string code)
+        {
+            if (isLight)
+            {
+                // 关键字
+                HighlightPattern(control, code, @"\b(public|private|protected|internal|class|interface|struct|enum|void|int|double|float|bool|string|object|var|dynamic|if|else|for|while|do|switch|case|break|continue|return|new|this|base|using|namespace|static|const|readonly|virtual|override|abstract|sealed|partial|ref|out|params|try|catch|finally|throw|yield|await|async|get|set|add|remove)\b", Color.Blue, Color.Empty);
+                // 类型名
+                HighlightPattern(control, code, @"\b(String|Int32|Double|Boolean|DateTime|List|Dictionary|IEnumerable|IList|IDictionary)\b", Color.Teal, Color.Empty);
+                // 字符串
+                HighlightPattern(control, code, @"""([^""\\]|\\.)*""", Color.Brown, Color.Empty);
+            }
+            else
+            {
+                // 深色主题
+                HighlightPattern(control, code, @"\b(public|private|protected|internal|class|interface|struct|enum|void|int|double|float|bool|string|object|var|dynamic|if|else|for|while|do|switch|case|break|continue|return|new|this|base|using|namespace|static|const|readonly|virtual|override|abstract|sealed|partial|ref|out|params|try|catch|finally|throw|yield|await|async|get|set|add|remove)\b", Color.Cyan, Color.Empty);
+                HighlightPattern(control, code, @"\b(String|Int32|Double|Boolean|DateTime|List|Dictionary|IEnumerable|IList|IDictionary)\b", Color.Orange, Color.Empty);
+                HighlightPattern(control, code, @"""([^""\\]|\\.)*""", Color.Yellow, Color.Empty);
+            }
+        }
+        
+        private void ApplyJavaSyntaxHighlighting(AntdUI.Input control, string code)
+        {
+            if (isLight)
+            {
+                // 关键字
+                HighlightPattern(control, code, @"\b(public|private|protected|class|interface|void|int|double|float|boolean|String|Object|if|else|for|while|do|switch|case|break|continue|return|new|this|import|package|static|final|abstract|extends|implements|try|catch|finally|throw|throws)\b", Color.Blue, Color.Empty);
+                // 类型名
+                HighlightPattern(control, code, @"\b(System|ArrayList|HashMap|List|Map|String|Date|Calendar)\b", Color.Teal, Color.Empty);
+                // 字符串
+                HighlightPattern(control, code, @"""([^""\\]|\\.)*""", Color.Brown, Color.Empty);
+            }
+            else
+            {
+                // 深色主题
+                HighlightPattern(control, code, @"\b(public|private|protected|class|interface|void|int|double|float|boolean|String|Object|if|else|for|while|do|switch|case|break|continue|return|new|this|import|package|static|final|abstract|extends|implements|try|catch|finally|throw|throws)\b", Color.Cyan, Color.Empty);
+                HighlightPattern(control, code, @"\b(System|ArrayList|HashMap|List|Map|String|Date|Calendar)\b", Color.Orange, Color.Empty);
+                HighlightPattern(control, code, @"""([^""\\]|\\.)*""", Color.Yellow, Color.Empty);
+            }
+        }
+        
+        /// <summary>
+        /// 应用主题颜色到指定控件
+        /// </summary>
+        /// <param name="control">目标控件</param>
+        private void ApplyThemeColorsToControl(AntdUI.Input control)
+        {
+            if (isLight)
+            {
+                control.ForeColor = Color.Black;
+                control.BackColor = Color.White;
+            }
+            else
+            {
+                control.ForeColor = Color.White;
+                control.BackColor = Color.FromArgb(31, 31, 31);
             }
         }
     }
