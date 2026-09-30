@@ -1,13 +1,11 @@
-﻿using PrettyText.TextFormatters;
+using PrettyText.TextFormatters;
 using PrettyText.Utils;
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
 using System.Drawing;
+using System.IO;
 using System.Linq;
 using System.Text;
-using System.Text.RegularExpressions; // 添加正则表达式支持
 using System.Windows.Forms;
 using static PrettyText.Utils.ClassGenerator;
 
@@ -15,150 +13,325 @@ namespace PrettyText
 {
     public partial class NewForm : AntdUI.Window
     {
-        private List<string> _history;
-        private const int MaxHistory = 20;
-        private bool _dark;
+        /// <summary>超过该字符数不再构建树视图（树视图对超大文本没有阅读价值，且构建代价很高）</summary>
+        private const int TreeBuildLimit = 3 * 1024 * 1024;
+
+        /// <summary>生成模型类的输入上限</summary>
+        private const int ExportGenerateLimit = 2 * 1024 * 1024;
+
+        /// <summary>打开文件时的体积提醒阈值</summary>
+        private const long LargeFileWarningSize = 64L * 1024 * 1024;
+
+        /// <summary>超过该字符数时状态栏不再统计行数（避免每次输入都复制整段文本）</summary>
+        private const int LineCountLimit = 2 * 1024 * 1024;
+
+        private readonly AppSettings _settings;
+        private readonly Timer _statsTimer = new Timer();
+        private readonly AntdUI.TooltipComponent _tooltip = new AntdUI.TooltipComponent();
+
+        private bool _isLight = true;
+        private bool _wrap = true;
+        private bool _restyling;
+
         private float _customFontSize = 10.5f;
         private Color _customFontColor = Color.FromArgb(40, 40, 40);
         private string _customFontFamily = "Consolas";
-        private bool isLight = true;
+
+        private List<string> _history;
+        private string _lastFind = string.Empty;
+        private AntdUI.TreeItem _findCursor;
+
         public NewForm()
         {
+            _settings = AppSettings.Load();
             InitializeComponent();
             InitializeUiLogic();
         }
 
+        #region 初始化
+
         private void InitializeUiLogic()
-        {            
-            //根据系统亮暗初始化一次
-            isLight = ThemeHelper.IsLightMode();
-            button_color.Toggle = !isLight;
-            ThemeHelper.SetColorMode(this, isLight);
-            
-            // 初始化状态栏颜色
+        {
+            // 主题：优先使用上次保存的设置，否则跟随系统
+            _isLight = _settings.IsLight ?? ThemeHelper.IsLightMode();
+            button_color.Toggle = !_isLight;
+            ThemeHelper.SetColorMode(this, _isLight);
             UpdateStatusBarColors();
 
-            // 填充格式下拉（来自注册器）
+            // 字体
+            _customFontSize = _settings.FontSize;
+            _customFontFamily = _settings.FontFamily;
+            _customFontColor = Color.FromArgb(_settings.FontColorArgb);
+
+            // 格式下拉（来自注册器）
             var formats = FormatterRegistry.GetAll().Select(f => f.Name).ToList();
             cboFormat.Items.Clear();
-            foreach (var format in formats)
-            {
-                cboFormat.Items.Add(format);
-            }
-            if (formats.Count > 0)
-                cboFormat.Text = formats[0];
+            foreach (var format in formats) cboFormat.Items.Add(format);
+            if (formats.Count > 0) cboFormat.Text = formats[0];
 
             // 历史记录
-            _history = new List<string>();
-            LoadHistory();
+            _history = _settings.History;
+            RefreshHistoryCombo();
 
-            // 初始化字体设置
-            ApplyFontSettings(_customFontSize, _customFontColor, _customFontFamily);
-            
-            // 应用初始语法高亮
-            ApplySyntaxHighlighting(cboFormat.Text ?? "", txtOutput.Text ?? "");
+            // 编辑器
+            _wrap = _settings.WordWrap;
+            ApplyWrap();
+            ApplyFontSettings(_customFontSize, _customFontColor, _customFontFamily, persist: false);
+            ApplySyntaxHighlighting(cboFormat.Text ?? string.Empty, txtOutput.Text ?? string.Empty);
 
-            // 更新统计信息
-            UpdateStats();
+            // 统计信息使用防抖计时器，避免每次输入都对整段文本做一次统计
+            _statsTimer.Interval = 250;
+            _statsTimer.Tick += (s, e) =>
+            {
+                _statsTimer.Stop();
+                UpdateStatsCore();
+            };
 
-            // 绑定事件
-            txtInput.TextChanged += (s, e) => UpdateStats();
-            txtOutput.TextChanged += (s, e) => UpdateStats();
-            
-            // 绑定树控件右键菜单事件
+            BindEvents();
+
+            // 窗口尺寸 / 位置
+            RestoreWindowLayout();
+            LayoutToolbar();
+
+            UpdateStatsCore();
+            lblStatus.Text = "✅ 就绪";
+        }
+
+        private void BindEvents()
+        {
+            txtInput.TextChanged += (s, e) => ScheduleStats();
+            txtOutput.TextChanged += (s, e) => ScheduleStats();
+
+            txtInput.AllowDrop = true;
+            txtInput.DragEnter += Editor_DragEnter;
+            txtInput.DragDrop += Editor_DragDrop;
+            AllowDrop = true;
+            DragEnter += Editor_DragEnter;
+            DragDrop += Editor_DragDrop;
+
             treeOutput.MouseDown += TreeOutput_MouseDown;
-            
-            // 绑定按钮事件
+
             btnPretty.Click += (s, e) => RunFormat(pretty: true);
             btnMinify.Click += (s, e) => RunFormat(pretty: false);
             btnDetect.Click += btnDetect_Click;
             btnCopy.Click += btnCopy_Click;
             btnOpen.Click += btnOpen_Click;
             btnSave.Click += btnSave_Click;
+            btnClear.Click += btnClear_Click;
+            btnWrap.Click += btnWrap_Click;
             btnExpandAll.Click += btnExpandAll_Click;
             btnCollapseAll.Click += btnCollapseAll_Click;
             btnFindPrev.Click += btnFindPrev_Click;
             btnFindNext.Click += btnFindNext_Click;
             cboHistory.SelectedIndexChanged += cboHistory_SelectedIndexChanged;
             btnFont.Click += btnFont_Click;
-
             button_color.Click += Button_color_Click;
+
+            // AntdUI.Input 使用虚拟焦点，回车需要在 VerifyKeyboard 中处理
+            txtFind.VerifyKeyboard += (s, e) =>
+            {
+                if ((e.KeyData & Keys.KeyCode) != Keys.Enter) return;
+                e.Result = false;
+                FindInternal((e.KeyData & Keys.Shift) != Keys.Shift);
+            };
+            txtFind.TextChanged += (s, e) =>
+            {
+                _lastFind = txtFind.Text ?? string.Empty;
+                _findCursor = null;
+            };
+
+            panelToolbar.SizeChanged += (s, e) => LayoutToolbar();
 
             BindButtonWithToolTip(panelToolbar);
 
             select1.SelectedIndex = 0;
-            
-            // 绑定Export tab事件
             select1.SelectedIndexChanged += Select1_SelectedIndexChanged;
             tabControl1.SelectedIndexChanged += TabControl1_SelectedIndexChanged;
+
+            // 默认停留在结果（Text）标签页
+            tabControl1.SelectedIndex = 0;
         }
 
-        private void TabControl1_SelectedIndexChanged(object sender, AntdUI.IntEventArgs e)
+        private void RestoreWindowLayout()
         {
-            var tabIndex = e.Value;
-            if (tabIndex == 2)
+            MinimumSize = new Size(1180, 560);
+
+            try
             {
-                // 切换到Export标签页时，更新代码预览
-                GenerateClassFromInput();
+                var size = new Size(Math.Max(_settings.WindowWidth, MinimumSize.Width), Math.Max(_settings.WindowHeight, MinimumSize.Height));
+
+                int left = _settings.WindowX;
+                int top = _settings.WindowY;
+                var area = Screen.PrimaryScreen.WorkingArea;
+
+                if (left != int.MinValue && top != int.MinValue)
+                    area = Screen.FromPoint(new Point(left, top)).WorkingArea;
+
+                // 保证窗口完整落在工作区内，避免状态栏被任务栏遮住
+                size.Width = Math.Min(size.Width, area.Width);
+                size.Height = Math.Min(size.Height, area.Height);
+                ClientSize = size;
+
+                if (_settings.WindowX != int.MinValue && _settings.WindowY != int.MinValue)
+                {
+                    int x = Math.Max(area.Left, Math.Min(left, area.Right - size.Width));
+                    int y = Math.Max(area.Top, Math.Min(top, area.Bottom - size.Height));
+                    var bounds = new Rectangle(new Point(x, y), size);
+                    bool visible = Screen.AllScreens.Any(s => s.WorkingArea.IntersectsWith(bounds));
+                    if (visible)
+                    {
+                        StartPosition = FormStartPosition.Manual;
+                        Location = new Point(x, y);
+                    }
+                }
+
+                if (_settings.SplitterDistance > 120 && _settings.SplitterDistance < ClientSize.Width - 120)
+                    splitContainer1.SplitterDistance = _settings.SplitterDistance;
+            }
+            catch (Exception)
+            {
+                // 布局恢复失败时使用设计器默认值
             }
         }
+
+        /// <summary>
+        /// 窗口变宽时把查找 / 历史 / 字体等按钮组靠右对齐，避免工具栏大面积留白。
+        /// 设计宽度为 1349：更窄时保持设计位置，更宽时整体右移。
+        /// </summary>
+        private void LayoutToolbar()
+        {
+            if (panelToolbar == null) return;
+
+            int shift = Math.Max(0, panelToolbar.Width - 1146);
+
+            var rightGroup = new Control[] { btnExpandAll, btnCollapseAll, txtFind, btnFindPrev, btnFindNext, cboHistory, btnFont };
+            var design = new int[] { 616, 665, 728, 854, 884, 920, 1076 };
+
+            for (int i = 0; i < rightGroup.Length; i++)
+            {
+                if (rightGroup[i] == null) continue;
+                rightGroup[i].Left = design[i] + shift;
+            }
+        }
+
+        private void SaveWindowLayout()
+        {
+            try
+            {
+                var bounds = WindowState == FormWindowState.Normal ? Bounds : RestoreBounds;
+                _settings.IsLight = _isLight;
+                _settings.WordWrap = _wrap;
+                _settings.FontFamily = _customFontFamily;
+                _settings.FontSize = _customFontSize;
+                _settings.FontColorArgb = _customFontColor.ToArgb();
+                _settings.WindowWidth = bounds.Width;
+                _settings.WindowHeight = bounds.Height;
+                _settings.WindowX = bounds.X;
+                _settings.WindowY = bounds.Y;
+                _settings.SplitterDistance = splitContainer1.SplitterDistance;
+                _settings.Save();
+            }
+            catch (Exception)
+            {
+                // 保存失败不影响关闭
+            }
+        }
+
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            _statsTimer.Stop();
+            SaveWindowLayout();
+            base.OnFormClosing(e);
+        }
+
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            switch (keyData)
+            {
+                case Keys.Control | Keys.E:
+                    RunFormat(pretty: true);
+                    return true;
+                case Keys.Control | Keys.M:
+                    RunFormat(pretty: false);
+                    return true;
+                case Keys.Control | Keys.O:
+                    btnOpen_Click(this, EventArgs.Empty);
+                    return true;
+                case Keys.Control | Keys.S:
+                    btnSave_Click(this, EventArgs.Empty);
+                    return true;
+                case Keys.Control | Keys.F:
+                    txtFind.Focus();
+                    txtFind.SelectAll();
+                    return true;
+                case Keys.F5:
+                    btnDetect_Click(this, EventArgs.Empty);
+                    return true;
+            }
+
+            if (keyData == Keys.Enter && txtFind.Focused)
+            {
+                FindInternal(true);
+                return true;
+            }
+
+            return base.ProcessCmdKey(ref msg, keyData);
+        }
+
+        #endregion
+
+        #region 主题
 
         private void Button_color_Click(object sender, EventArgs e)
         {
-            isLight = !isLight;
-            //这里使用了Toggle属性切换图标
-            button_color.Toggle = !isLight;
-            ThemeHelper.SetColorMode(this, isLight);
+            _isLight = !_isLight;
+            button_color.Toggle = !_isLight;
+            ThemeHelper.SetColorMode(this, _isLight);
+            ApplyEditorTheme();
             UpdateStatusBarColors();
-            
-            // 重新应用语法高亮
-            ReapplySyntaxHighlighting();
+
+            // 主题变化后重新着色
+            ApplySyntaxHighlighting(cboFormat.Text ?? string.Empty, txtOutput.Text ?? string.Empty);
+            ApplyCodeHighlighting(SelectedLanguage());
         }
-        
-        /// <summary>
-        /// 重新应用语法高亮（主题切换时调用）
-        /// </summary>
-        private void ReapplySyntaxHighlighting()
-        {
-            var format = cboFormat.Text ?? "";
-            ApplySyntaxHighlighting(format, txtOutput.Text ?? "");
 
-            ClassGenerator.LanguageType languageType;
-            string selectedLanguage = select1.Text;
-
-            if (selectedLanguage == "C#")
-            {
-                languageType = ClassGenerator.LanguageType.CSharp;
-            }
-            else
-            {
-                languageType = ClassGenerator.LanguageType.Java;
-            }
-
-            // 应用语法高亮
-            ApplySyntaxHighlightingForCode(languageType, input1.Text);
-        }
-        
-        /// <summary>
-        /// 更新状态栏颜色以匹配当前主题
-        /// </summary>
         private void UpdateStatusBarColors()
         {
-            if (isLight)
-            {
-                // 浅色主题
-                statusPanel.Back = Color.White;
-                lblStatus.ForeColor = Color.Black;
-                lblStats.ForeColor = Color.Black;
-            }
-            else
-            {
-                // 深色主题
-                statusPanel.Back = Color.FromArgb(31, 31, 31);
-                lblStatus.ForeColor = Color.White;
-                lblStats.ForeColor = Color.White;
-            }
+            statusPanel.Back = ThemeHelper.StatusBarBackground(_isLight);
+            var fore = ThemeHelper.Foreground(_isLight);
+            lblStatus.ForeColor = fore;
+            lblStats.ForeColor = fore;
         }
+
+        /// <summary>
+        /// 刷新三个编辑器的主题配色
+        /// </summary>
+        private void ApplyEditorTheme()
+        {
+            var back = ThemeHelper.Background(_isLight);
+            var fore = ResolveEditorForeColor(ThemeHelper.Foreground(_isLight));
+            var placeholder = ThemeHelper.Placeholder(_isLight);
+
+            txtInput.ApplyTheme(back, fore, placeholder);
+            txtOutput.ApplyTheme(back, fore, placeholder);
+            input1.ApplyTheme(back, fore, placeholder);
+            panelTextOutput.Back = back;
+        }
+
+        /// <summary>
+        /// 自定义字体颜色在极端明暗下不可读时回退到主题色
+        /// </summary>
+        private Color ResolveEditorForeColor(Color fallback)
+        {
+            int brightness = (_customFontColor.R + _customFontColor.G + _customFontColor.B) / 3;
+            if (_isLight && brightness > 200) return fallback;
+            if (!_isLight && brightness < 90) return fallback;
+            return _customFontColor;
+        }
+
+        #endregion
+
+        #region 格式化
 
         private void btnDetect_Click(object sender, EventArgs e)
         {
@@ -166,9 +339,6 @@ namespace PrettyText
             {
                 var formatter = FormatterRegistry.Resolve(txtInput.Text);
                 cboFormat.Text = formatter.Name;
-                lblStatus.Text = "✅ 识别为 " + formatter.Name;
-
-                // 自动触发美化按钮
                 RunFormat(pretty: true);
             }
             catch (Exception ex)
@@ -177,103 +347,105 @@ namespace PrettyText
             }
         }
 
-        private void btnCopy_Click(object sender, EventArgs e)
-        {
-            // 复制选中的文本或全部文本
-            var selectedText = txtOutput.SelectedText;
-            var textToCopy = !string.IsNullOrEmpty(selectedText) ? selectedText : txtOutput.Text;
-            
-            if (string.IsNullOrEmpty(textToCopy))
-            {
-                lblStatus.Text = "⚠️ 无可复制内容";
-                return;
-            }
-            
-            Clipboard.SetText(textToCopy);
-            lblStatus.Text = "✅ 已复制文本";
-        }
-
-        private void btnOpen_Click(object sender, EventArgs e)
-        {
-            using (var ofd = new OpenFileDialog())
-            {
-                ofd.Filter = "All|*.*|Text|*.txt;*.log;*.md;*.cfg|JSON|*.json|XML|*.xml|YAML|*.yml;*.yaml|CSV|*.csv|HTML|*.html;*.htm";
-                if (ofd.ShowDialog() == DialogResult.OK)
-                {
-                    try
-                    {
-                        var text = System.IO.File.ReadAllText(ofd.FileName, Encoding.UTF8);
-                        txtInput.Text = text;
-                        lblStatus.Text = "✅ 已打开文件: " + System.IO.Path.GetFileName(ofd.FileName);
-                        AppendHistory(text);
-                    }
-                    catch (Exception ex)
-                    {
-                        lblStatus.Text = "❌ 打开失败: " + ex.Message;
-                    }
-                }
-            }
-        }
-
-        private void btnSave_Click(object sender, EventArgs e)
-        {
-            using (var sfd = new SaveFileDialog())
-            {
-                sfd.Filter = "Text|*.txt;*.json;*.xml;*.yaml;*.yml;*.csv;*.html|All|*.*";
-                sfd.FileName = "output.txt";
-                if (sfd.ShowDialog() == DialogResult.OK)
-                {
-                    try
-                    {
-                        System.IO.File.WriteAllText(sfd.FileName, txtOutput.Text ?? string.Empty, Encoding.UTF8);
-                        lblStatus.Text = "✅ 已保存到: " + sfd.FileName;
-                    }
-                    catch (Exception ex)
-                    {
-                        lblStatus.Text = "❌ 保存失败: " + ex.Message;
-                    }
-                }
-            }
-        }
-
         private void RunFormat(bool pretty)
         {
+            var input = txtInput.Text ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(input))
+            {
+                lblStatus.Text = "⚠️ 请先输入或打开文本";
+                return;
+            }
+
             try
             {
-                var input = txtInput.Text ?? string.Empty;
                 AppendHistory(input);
-                
-                var selected = (cboFormat.Text ?? "").Trim();
-                ITextFormatter formatter = FormatterRegistry.GetAll().FirstOrDefault(f => string.Equals(f.Name, selected, StringComparison.OrdinalIgnoreCase));
-                
-                if (formatter == null)
-                {
-                    formatter = FormatterRegistry.Resolve(input);
-                    cboFormat.Text = formatter.Name;
-                }
 
-                string output;
+                var selected = (cboFormat.Text ?? string.Empty).Trim();
+                ITextFormatter formatter = FormatterRegistry.GetAll()
+                    .FirstOrDefault(f => string.Equals(f.Name, selected, StringComparison.OrdinalIgnoreCase));
+                if (formatter == null) formatter = FormatterRegistry.Resolve(input);
+
+                string output = null;
+                ITextFormatter used = formatter;
+                Exception firstError = null;
+
                 try
                 {
                     output = pretty ? formatter.FormatPretty(input) : formatter.FormatMinified(input);
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // 尝试自动降级:去除外层引号与转义后再试
-                    var fallback = SafeUnescape(input);
-                    output = pretty ? formatter.FormatPretty(fallback) : formatter.FormatMinified(fallback);
+                    firstError = ex;
                 }
-                
-                txtOutput.Text = output;
-                ApplySyntaxHighlighting(formatter.Name, output); // 添加语法高亮
-                BuildTree(formatter, output);
-                lblStatus.Text = (pretty ? "✨ 已美化: " : "📦 已压缩: ") + formatter.Name;
-                UpdateStats();
+
+                if (output == null)
+                {
+                    // 下拉框选中的格式和内容不匹配时，自动改用识别到的格式
+                    var detected = FormatterRegistry.Resolve(input);
+                    if (!string.Equals(detected.Name, formatter.Name, StringComparison.OrdinalIgnoreCase))
+                    {
+                        try
+                        {
+                            output = pretty ? detected.FormatPretty(input) : detected.FormatMinified(input);
+                            used = detected;
+                        }
+                        catch (Exception)
+                        {
+                            output = null;
+                        }
+                    }
+                }
+
+                if (output == null)
+                {
+                    // 再尝试去掉外层引号与转义
+                    var fallback = SafeUnescape(input);
+                    try
+                    {
+                        output = pretty ? used.FormatPretty(fallback) : used.FormatMinified(fallback);
+                    }
+                    catch (Exception)
+                    {
+                        output = null;
+                    }
+                }
+
+                if (output == null)
+                {
+                    lblStatus.Text = "❌ 处理失败: " + (firstError == null ? "内容与所选格式不匹配" : firstError.Message);
+                    return;
+                }
+
+                cboFormat.Text = used.Name;
+                ShowOutput(used.Name, output);
+                lblStatus.Text = (pretty ? "✨ 已美化: " : "📦 已压缩: ") + used.Name;
             }
             catch (Exception ex)
             {
                 lblStatus.Text = "❌ 处理失败: " + ex.Message;
             }
+        }
+
+        /// <summary>
+        /// 把结果写入输出编辑器（旧实现只清了文本却从未赋值，导致 Text 标签页始终为空）
+        /// </summary>
+        private void ShowOutput(string format, string output)
+        {
+            output = output ?? string.Empty;
+
+            _restyling = true;
+            try
+            {
+                txtOutput.Text = output;
+            }
+            finally
+            {
+                _restyling = false;
+            }
+
+            ApplySyntaxHighlighting(format, output);
+            BuildTree(format, output);
+            UpdateStatsCore();
         }
 
         private static string SafeUnescape(string text)
@@ -289,25 +461,306 @@ namespace PrettyText
             return t;
         }
 
-        private void BuildTree(ITextFormatter formatter, string text)
+        private void ApplySyntaxHighlighting(string format, string text)
         {
-            // 清空现有节点
+            SyntaxHighlighter.Apply(txtOutput, format, _isLight);
+        }
+
+        private void ApplyCodeHighlighting(LanguageType language)
+        {
+            SyntaxHighlighter.Apply(input1, language == LanguageType.CSharp ? "C#" : "Java", _isLight);
+        }
+
+        #endregion
+
+        #region 统计
+
+        private void ScheduleStats()
+        {
+            if (_restyling) return;
+            _statsTimer.Stop();
+            _statsTimer.Start();
+        }
+
+        private void UpdateStatsCore()
+        {
+            lblStats.Text = "📄 输入 " + Describe(txtInput) + "    📝 输出 " + Describe(txtOutput);
+        }
+
+        /// <summary>
+        /// 大文本下不再取回整段字符串（RichTextBox.Text 会复制全文），只做字符量统计
+        /// </summary>
+        private static string Describe(RichTextBox box)
+        {
+            int length = box.TextLength;
+            if (length == 0) return "0 行 0 字符";
+            if (length > LineCountLimit) return FormatLength(length);
+            return CountLines(box.Text) + " 行 " + FormatLength(length);
+        }
+
+        private static int CountLines(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return 0;
+            int lines = 1;
+            for (int i = 0; i < text.Length; i++)
+            {
+                if (text[i] == '\n') lines++;
+            }
+            return lines;
+        }
+
+        private static string FormatLength(int chars)
+        {
+            if (chars < 1024) return chars + " 字符";
+            if (chars < 1024 * 1024) return (chars / 1024.0).ToString("0.0") + " KB";
+            return (chars / 1048576.0).ToString("0.00") + " MB";
+        }
+
+        #endregion
+
+        #region 文件与剪贴板
+
+        private void btnCopy_Click(object sender, EventArgs e)
+        {
+            var selectedText = txtOutput.SelectedText;
+            var textToCopy = !string.IsNullOrEmpty(selectedText) ? selectedText : txtOutput.Text;
+
+            if (string.IsNullOrEmpty(textToCopy))
+            {
+                lblStatus.Text = "⚠️ 无可复制内容";
+                return;
+            }
+
+            lblStatus.Text = ClipboardHelper.TrySetText(textToCopy)
+                ? "✅ 已复制 " + FormatLength(textToCopy.Length)
+                : "❌ 复制失败：剪贴板被其他程序占用";
+        }
+
+        private void btnClear_Click(object sender, EventArgs e)
+        {
+            txtInput.Clear();
+            txtOutput.Clear();
             treeOutput.Items.Clear();
-            
+            input1.Clear();
+            lblStatus.Text = "✅ 已清空";
+            UpdateStatsCore();
+        }
+
+        private void btnOpen_Click(object sender, EventArgs e)
+        {
+            using (var ofd = new OpenFileDialog())
+            {
+                ofd.Filter = "All|*.*|Text|*.txt;*.log;*.md;*.cfg|JSON|*.json|XML|*.xml|YAML|*.yml;*.yaml|CSV|*.csv|HTML|*.html;*.htm";
+                if (ofd.ShowDialog() != DialogResult.OK) return;
+                LoadFile(ofd.FileName);
+            }
+        }
+
+        private void LoadFile(string path)
+        {
             try
             {
-                if (string.Equals(formatter.Name, "JSON", StringComparison.OrdinalIgnoreCase))
+                var info = new FileInfo(path);
+                if (info.Length > LargeFileWarningSize)
+                {
+                    var result = MessageBox.Show(this,
+                        string.Format("文件约 {0:0.#} MB，打开后界面可能短暂无响应，是否继续？", info.Length / 1048576.0),
+                        "PrettyText", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                    if (result != DialogResult.Yes) return;
+                }
+
+                var text = ReadFileText(path);
+                txtInput.Text = text;
+                lblStatus.Text = "✅ 已打开文件: " + Path.GetFileName(path) + "（" + FormatLength(text.Length) + "）";
+                AppendHistory(text);
+                UpdateStatsCore();
+            }
+            catch (Exception ex)
+            {
+                lblStatus.Text = "❌ 打开失败: " + ex.Message;
+            }
+        }
+
+        /// <summary>
+        /// 读取文本文件：优先按 BOM 判断编码，遇到乱码再按系统 ANSI（中文 GBK）重读。
+        /// </summary>
+        private static string ReadFileText(string path)
+        {
+            var text = File.ReadAllText(path, Encoding.UTF8);
+            if (text.IndexOf('\uFFFD') >= 0)
+            {
+                try { text = File.ReadAllText(path, Encoding.Default); }
+                catch (Exception) { }
+            }
+            return text;
+        }
+
+        private void btnSave_Click(object sender, EventArgs e)
+        {
+            using (var sfd = new SaveFileDialog())
+            {
+                sfd.Filter = "Text|*.txt;*.json;*.xml;*.yaml;*.yml;*.csv;*.html|All|*.*";
+                sfd.FileName = "output.txt";
+                if (sfd.ShowDialog() != DialogResult.OK) return;
+
+                try
+                {
+                    File.WriteAllText(sfd.FileName, txtOutput.Text ?? string.Empty, new UTF8Encoding(false));
+                    lblStatus.Text = "✅ 已保存到: " + sfd.FileName;
+                }
+                catch (Exception ex)
+                {
+                    lblStatus.Text = "❌ 保存失败: " + ex.Message;
+                }
+            }
+        }
+
+        private void Editor_DragEnter(object sender, DragEventArgs e)
+        {
+            if (e.Data != null && e.Data.GetDataPresent(DataFormats.FileDrop))
+                e.Effect = DragDropEffects.Copy;
+        }
+
+        private void Editor_DragDrop(object sender, DragEventArgs e)
+        {
+            if (e.Data == null || !e.Data.GetDataPresent(DataFormats.FileDrop)) return;
+
+            var files = e.Data.GetData(DataFormats.FileDrop) as string[];
+            if (files == null || files.Length == 0) return;
+            LoadFile(files[0]);
+        }
+
+        #endregion
+
+        #region 字体
+
+        private void btnFont_Click(object sender, EventArgs e)
+        {
+            using (var dlg = new FontDialog())
+            {
+                dlg.Font = txtInput.Font;
+                dlg.ShowColor = true;
+                dlg.Color = _customFontColor;
+                dlg.FontMustExist = true;
+
+                if (dlg.ShowDialog() == DialogResult.OK)
+                {
+                    ApplyFontSettings(dlg.Font.Size, dlg.Color, dlg.Font.FontFamily.Name, persist: true);
+                    lblStatus.Text = "✅ 已应用自定义字体";
+                }
+            }
+        }
+
+        private void ApplyFontSettings(float size, Color color, string fontFamily, bool persist)
+        {
+            try
+            {
+                var font = new Font(fontFamily, size);
+                txtInput.Font = font;
+                txtOutput.Font = font;
+                input1.Font = font;
+
+                _customFontSize = size;
+                _customFontColor = color;
+                _customFontFamily = fontFamily;
+
+                ApplyEditorTheme();
+                ApplySyntaxHighlighting(cboFormat.Text ?? string.Empty, txtOutput.Text ?? string.Empty);
+                ApplyCodeHighlighting(SelectedLanguage());
+
+                if (persist) SaveWindowLayout();
+            }
+            catch (Exception ex)
+            {
+                lblStatus.Text = "❌ 字体设置失败: " + ex.Message;
+            }
+        }
+
+        #endregion
+
+        #region 自动换行
+
+        private void btnWrap_Click(object sender, EventArgs e)
+        {
+            _wrap = !_wrap;
+            ApplyWrap();
+            lblStatus.Text = _wrap ? "✅ 已开启自动换行" : "✅ 已关闭自动换行";
+        }
+
+        private void ApplyWrap()
+        {
+            txtInput.WordWrap = _wrap;
+            txtOutput.WordWrap = _wrap;
+            input1.WordWrap = _wrap;
+
+            var scrollBars = _wrap ? RichTextBoxScrollBars.Vertical : RichTextBoxScrollBars.Both;
+            txtInput.ScrollBars = scrollBars;
+            txtOutput.ScrollBars = scrollBars;
+            input1.ScrollBars = scrollBars;
+
+            btnWrap.Toggle = !_wrap;
+        }
+
+        #endregion
+
+        #region 历史记录
+
+        private void AppendHistory(string text)
+        {
+            _settings.AddHistory(text);
+            RefreshHistoryCombo();
+        }
+
+        private void RefreshHistoryCombo()
+        {
+            cboHistory.Items.Clear();
+            for (int i = 0; i < _history.Count; i++)
+            {
+                var preview = _history[i].Replace("\r\n", " ").Replace("\n", " ").Replace("\t", " ");
+                if (preview.Length > 60) preview = preview.Substring(0, 60) + "...";
+                cboHistory.Items.Add("#" + i + " " + preview);
+            }
+        }
+
+        private void cboHistory_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            var idx = cboHistory.SelectedIndex;
+            if (idx < 0 || idx >= _history.Count) return;
+
+            txtInput.Text = _history[idx];
+            lblStatus.Text = "✅ 已从历史载入";
+            UpdateStatsCore();
+        }
+
+        #endregion
+
+        #region 树视图
+
+        private void BuildTree(string format, string text)
+        {
+            treeOutput.Items.Clear();
+
+            try
+            {
+                if (string.IsNullOrEmpty(text)) return;
+
+                if (text.Length > TreeBuildLimit)
+                {
+                    treeOutput.Items.Add(new AntdUI.TreeItem("内容过大(" + FormatLength(text.Length) + ")，已跳过树视图"));
+                    return;
+                }
+
+                if (string.Equals(format, "JSON", StringComparison.OrdinalIgnoreCase))
                 {
                     BuildTreeFromJson(text);
                 }
-                else if (string.Equals(formatter.Name, "XML", StringComparison.OrdinalIgnoreCase))
+                else if (string.Equals(format, "XML", StringComparison.OrdinalIgnoreCase))
                 {
                     BuildTreeFromXml(text);
                 }
                 else
                 {
-                    // 对于其他格式，创建一个简单的节点
-                    var node = new AntdUI.TreeItem(formatter.Name);
+                    var node = new AntdUI.TreeItem(format);
                     node.Tag = text;
                     treeOutput.Items.Add(node);
                 }
@@ -323,7 +776,10 @@ namespace PrettyText
             try
             {
                 var serializer = new System.Web.Script.Serialization.JavaScriptSerializer();
+                serializer.MaxJsonLength = int.MaxValue;
+                serializer.RecursionLimit = 200;
                 var obj = serializer.DeserializeObject(json);
+
                 var root = new AntdUI.TreeItem("JSON");
                 BuildJsonNode(root, obj);
                 treeOutput.Items.Add(root);
@@ -362,9 +818,7 @@ namespace PrettyText
             else
             {
                 var text = serializerSafeToString(value);
-                var child = new AntdUI.TreeItem(text);
-                child.Tag = text;
-                parent.Sub.Add(child);
+                parent.Sub.Add(new AntdUI.TreeItem(text) { Tag = text });
                 parent.Tag = text;
             }
         }
@@ -383,6 +837,7 @@ namespace PrettyText
                 var doc = new System.Xml.XmlDocument();
                 doc.XmlResolver = null;
                 doc.LoadXml(xmlText);
+
                 var root = new AntdUI.TreeItem(doc.DocumentElement.Name);
                 root.Tag = doc.DocumentElement.OuterXml;
                 BuildXmlNode(root, doc.DocumentElement);
@@ -406,7 +861,7 @@ namespace PrettyText
                     parent.Sub.Add(attrNode);
                 }
             }
-            
+
             foreach (System.Xml.XmlNode child in node.ChildNodes)
             {
                 if (child.NodeType == System.Xml.XmlNodeType.Element)
@@ -419,131 +874,145 @@ namespace PrettyText
                 else if (child.NodeType == System.Xml.XmlNodeType.Text || child.NodeType == System.Xml.XmlNodeType.CDATA)
                 {
                     var text = child.InnerText;
-                    var textNode = new AntdUI.TreeItem(text);
-                    textNode.Tag = text;
-                    parent.Sub.Add(textNode);
+                    parent.Sub.Add(new AntdUI.TreeItem(text) { Tag = text });
                 }
             }
         }
 
         private void btnExpandAll_Click(object sender, EventArgs e)
         {
-            // 展开所有节点
-            foreach (AntdUI.TreeItem node in treeOutput.Items)
-            {
-                ExpandNode(node);
-            }
+            foreach (AntdUI.TreeItem node in treeOutput.Items) ExpandNode(node);
             lblStatus.Text = "✅ 已展开所有节点";
+        }
+
+        private void btnCollapseAll_Click(object sender, EventArgs e)
+        {
+            foreach (AntdUI.TreeItem node in treeOutput.Items) CollapseNode(node);
+            lblStatus.Text = "✅ 已折叠所有节点";
         }
 
         private void ExpandNode(AntdUI.TreeItem node)
         {
             node.Expand = true;
-            foreach (AntdUI.TreeItem child in node.Sub)
-            {
-                ExpandNode(child);
-            }
-        }
-
-        private void btnCollapseAll_Click(object sender, EventArgs e)
-        {
-            // 折叠所有节点
-            foreach (AntdUI.TreeItem node in treeOutput.Items)
-            {
-                CollapseNode(node);
-            }
-            lblStatus.Text = "✅ 已折叠所有节点";
+            foreach (AntdUI.TreeItem child in node.Sub) ExpandNode(child);
         }
 
         private void CollapseNode(AntdUI.TreeItem node)
         {
             node.Expand = false;
-            foreach (AntdUI.TreeItem child in node.Sub)
-            {
-                CollapseNode(child);
-            }
+            foreach (AntdUI.TreeItem child in node.Sub) CollapseNode(child);
         }
 
-        private string _lastFind = "";
-        private AntdUI.TreeItem _findCursor;
+        #endregion
+
+        #region 查找
 
         private void btnFindPrev_Click(object sender, EventArgs e)
         {
-            _lastFind = txtFind.Text;
-            FindPrev();
+            FindInternal(false);
         }
 
         private void btnFindNext_Click(object sender, EventArgs e)
         {
-            _lastFind = txtFind.Text;
-            FindNext();
+            FindInternal(true);
         }
 
-        private void FindNext()
+        private void FindInternal(bool forward)
         {
-            if (string.IsNullOrEmpty(_lastFind)) return;
-            
-            // 在树中查找下一个匹配项
-            var nodes = GetAllNodes();
-            var startIndex = _findCursor != null ? nodes.IndexOf(_findCursor) : -1;
-            
-            for (int i = startIndex + 1; i < nodes.Count; i++)
+            _lastFind = txtFind.Text ?? string.Empty;
+            if (_lastFind.Length == 0)
             {
-                var node = nodes[i];
-                if (NodeMatches(node, _lastFind))
-                {
-                    _findCursor = node;
-                    treeOutput.Focus(_findCursor);
-                    treeOutput.Select(_findCursor);
-                    lblStatus.Text = "✅ 找到匹配项";
-                    return;
-                }
+                lblStatus.Text = "⚠️ 请输入查找内容";
+                return;
             }
-            
-            lblStatus.Text = "❌ 未找到";
+
+            // 树视图下沿用按节点匹配的行为
+            if (tabControl1.SelectedIndex == 1)
+            {
+                FindInTree(forward);
+                return;
+            }
+
+            FindInOutput(forward);
         }
 
-        private void FindPrev()
+        private void FindInOutput(bool forward)
         {
-            if (string.IsNullOrEmpty(_lastFind)) return;
-            
-            // 在树中查找上一个匹配项
-            var nodes = GetAllNodes();
-            var startIndex = _findCursor != null ? nodes.IndexOf(_findCursor) : nodes.Count;
-            
-            for (int i = startIndex - 1; i >= 0; i--)
+            var text = txtOutput.Text ?? string.Empty;
+            if (text.Length == 0)
             {
-                var node = nodes[i];
-                if (NodeMatches(node, _lastFind))
+                lblStatus.Text = "❌ 没有可查找的内容";
+                return;
+            }
+
+            int index = -1;
+            if (forward)
+            {
+                int start = Math.Min(txtOutput.SelectionStart + txtOutput.SelectionLength, text.Length);
+                index = text.IndexOf(_lastFind, start, StringComparison.OrdinalIgnoreCase);
+                if (index < 0) index = text.IndexOf(_lastFind, 0, StringComparison.OrdinalIgnoreCase);
+            }
+            else
+            {
+                int start = Math.Min(Math.Max(txtOutput.SelectionStart - 1, 0), text.Length - 1);
+                index = text.LastIndexOf(_lastFind, start, StringComparison.OrdinalIgnoreCase);
+                if (index < 0) index = text.LastIndexOf(_lastFind, text.Length - 1, StringComparison.OrdinalIgnoreCase);
+            }
+
+            if (index < 0)
+            {
+                lblStatus.Text = "❌ 未找到: " + _lastFind;
+                return;
+            }
+
+            txtOutput.Focus();
+            txtOutput.Select(index, _lastFind.Length);
+            txtOutput.ScrollToCaret();
+            lblStatus.Text = "🔍 已定位到第 " + (CountLines(text.Substring(0, index)) ) + " 行";
+        }
+
+        private void FindInTree(bool forward)
+        {
+            var nodes = GetAllNodes();
+            int startIndex = _findCursor != null ? nodes.IndexOf(_findCursor) : (forward ? -1 : nodes.Count);
+
+            if (forward)
+            {
+                for (int i = startIndex + 1; i < nodes.Count; i++)
                 {
-                    _findCursor = node;
-                    treeOutput.Focus(_findCursor);
-                    treeOutput.Select(_findCursor);
-                    lblStatus.Text = "✅ 找到匹配项";
-                    return;
+                    if (NodeMatches(nodes[i], _lastFind)) { SelectNode(nodes[i]); return; }
                 }
             }
-            
-            lblStatus.Text = "❌ 未找到";
+            else
+            {
+                for (int i = startIndex - 1; i >= 0; i--)
+                {
+                    if (NodeMatches(nodes[i], _lastFind)) { SelectNode(nodes[i]); return; }
+                }
+            }
+
+            lblStatus.Text = "❌ 未找到: " + _lastFind;
+        }
+
+        private void SelectNode(AntdUI.TreeItem node)
+        {
+            _findCursor = node;
+            treeOutput.Focus(node);
+            treeOutput.Select(node);
+            lblStatus.Text = "✅ 找到匹配项";
         }
 
         private List<AntdUI.TreeItem> GetAllNodes()
         {
             var nodes = new List<AntdUI.TreeItem>();
-            foreach (AntdUI.TreeItem node in treeOutput.Items)
-            {
-                CollectNodes(node, nodes);
-            }
+            foreach (AntdUI.TreeItem node in treeOutput.Items) CollectNodes(node, nodes);
             return nodes;
         }
 
         private void CollectNodes(AntdUI.TreeItem node, List<AntdUI.TreeItem> nodes)
         {
             nodes.Add(node);
-            foreach (AntdUI.TreeItem child in node.Sub)
-            {
-                CollectNodes(child, nodes);
-            }
+            foreach (AntdUI.TreeItem child in node.Sub) CollectNodes(child, nodes);
         }
 
         private bool NodeMatches(AntdUI.TreeItem node, string searchText)
@@ -552,408 +1021,31 @@ namespace PrettyText
                    (Convert.ToString(node.Tag) ?? string.Empty).IndexOf(searchText, StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
-        private void AppendHistory(string text)
-        {
-            if (string.IsNullOrWhiteSpace(text)) return;
-            
-            // 去重：如果已存在相同内容，先移除旧的
-            var existingIndex = _history.FindIndex(h => string.Equals(h, text, StringComparison.Ordinal));
-            if (existingIndex >= 0)
-            {
-                _history.RemoveAt(existingIndex);
-            }
-            
-            // 插入到最前面
-            _history.Insert(0, text);
-            if (_history.Count > MaxHistory) _history.RemoveAt(_history.Count - 1);
-            RefreshHistoryCombo();
-        }
+        #endregion
 
-        private void LoadHistory()
-        {
-            // 简化历史记录加载，实际项目中可以从文件加载
-            RefreshHistoryCombo();
-        }
-
-        private void RefreshHistoryCombo()
-        {
-            cboHistory.Items.Clear();
-            int i = 0;
-            foreach (var h in _history)
-            {
-                var preview = h.Replace("\r\n", " ").Replace("\n", " ");
-                if (preview.Length > 60) preview = preview.Substring(0, 60) + "...";
-                cboHistory.Items.Add("#" + i.ToString() + " " + preview);
-                i++;
-            }
-        }
-
-        private void cboHistory_SelectedIndexChanged(object sender, EventArgs e)
-        {
-            var idx = cboHistory.SelectedIndex;
-            if (idx >= 0 && idx < _history.Count)
-            {
-                txtInput.Text = _history[idx];
-                lblStatus.Text = "✅ 已从历史载入";
-            }
-        }
-
-        private void btnFont_Click(object sender, EventArgs e)
-        {
-            using (var dlg = new FontDialog())
-            {
-                dlg.Font = txtInput.Font;
-                dlg.ShowColor = true;
-                // 修复颜色类型转换问题
-                dlg.Color = txtInput.ForeColor.HasValue ? txtInput.ForeColor.Value : Color.Black;
-                dlg.FontMustExist = true;
-
-                if (dlg.ShowDialog() == DialogResult.OK)
-                {
-                    ApplyFontSettings(dlg.Font.Size, dlg.Color, dlg.Font.FontFamily.Name);
-                    lblStatus.Text = "✅ 已应用自定义字体";
-                }
-            }
-        }
-
-        private void ApplyFontSettings(float size, Color color, string fontFamily)
-        {
-            try
-            {
-                var font = new Font(fontFamily, size);
-                txtInput.Font = font;
-                txtOutput.Font = font;
-                txtInput.ForeColor = color;
-                txtOutput.ForeColor = color;
-
-                // 如果是暗色主题，需要确保颜色可见
-                if (_dark)
-                {
-                    // 暗色主题下，如果选择的颜色太暗，自动调亮
-                    var brightness = (color.R + color.G + color.B) / 3;
-                    if (brightness < 80)
-                    {
-                        txtInput.ForeColor = Color.Gainsboro;
-                        txtOutput.ForeColor = Color.Gainsboro;
-                    }
-                }
-
-                // 保存字体设置
-                _customFontSize = size;
-                _customFontColor = color;
-                _customFontFamily = fontFamily;
-            }
-            catch (Exception ex)
-            {
-                lblStatus.Text = "❌ 字体设置失败: " + ex.Message;
-            }
-        }
-
-        private void UpdateStats()
-        {
-            var input = txtInput.Text ?? string.Empty;
-            var output = txtOutput.Text ?? string.Empty;
-            int inLines = input.Length == 0 ? 0 : input.Replace("\r\n", "\n").Split('\n').Length;
-            int outLines = output.Length == 0 ? 0 : output.Replace("\r\n", "\n").Split('\n').Length;
-            lblStats.Text = "📄 输入 行:" + inLines.ToString() + " 字符:" + input.Length.ToString() +
-                            "   |   📝 输出 行:" + outLines.ToString() + " 字符:" + output.Length.ToString();
-        }
-
-        /// <summary>
-        /// 应用语法高亮
-        /// </summary>
-        /// <param name="format">格式类型</param>
-        /// <param name="text">文本内容</param>
-        private void ApplySyntaxHighlighting(string format, string text)
-        {
-            // 清除现有的样式
-            txtOutput.ClearStyle(true);
-            
-            // 根据格式类型应用不同的高亮规则
-            switch (format.ToUpper())
-            {
-                case "JSON":
-                    HighlightJson(text);
-                    break;
-                case "XML":
-                    HighlightXml(text);
-                    break;
-                default:
-                    // 对于其他格式，应用基础的主题颜色
-                    ApplyThemeColors();
-                    break;
-            }
-        }
-        
-        /// <summary>
-        /// 应用主题颜色到整个窗体
-        /// </summary>
-        private void ApplyThemeColors()
-        {
-            if (isLight)
-            {
-                // 浅色主题
-                txtInput.ForeColor = txtOutput.ForeColor = Color.Black;
-                txtInput.BackColor = txtOutput.BackColor = Color.White;
-            }
-            else
-            {
-                // 深色主题
-                txtInput.ForeColor = txtOutput.ForeColor = Color.White;
-                txtInput.BackColor = txtOutput.BackColor = Color.FromArgb(31, 31, 31);
-            }
-        }
-
-        /// <summary>
-        /// JSON语法高亮
-        /// </summary>
-        /// <param name="json">JSON文本</param>
-        private void HighlightJson(string json)
-        {
-            // 应用基础主题颜色
-            ApplyThemeColors();
-            
-            if (isLight)
-            {
-                // 浅色主题的JSON高亮
-                HighlightJsonLight(json);
-            }
-            else
-            {
-                // 深色主题的JSON高亮
-                HighlightJsonDark(json);
-            }
-        }
-        
-        private void HighlightJsonLight(string json)
-        {
-            // 关键字颜色 (true, false, null)
-            HighlightPattern(txtOutput, json, @"\b(true|false|null)\b", Color.Blue, Color.Empty);
-            
-            // 字符串颜色
-            HighlightPattern(txtOutput, json, @"""([^""\\]|\\.)*""", Color.Brown, Color.Empty);
-            
-            // 数字颜色
-            HighlightPattern(txtOutput, json, @"\b\d+(\.\d+)?\b", Color.Green, Color.Empty);
-            
-            // 结构符号颜色
-            HighlightPattern(txtOutput, json, @"[{}[\]:,]", Color.Black, Color.Empty);
-        }
-        
-        private void HighlightJsonDark(string json)
-        {
-            // 关键字颜色 (true, false, null)
-            HighlightPattern(txtOutput, json, @"\b(true|false|null)\b", Color.Cyan, Color.Empty);
-            
-            // 字符串颜色
-            HighlightPattern(txtOutput, json, @"""([^""\\]|\\.)*""", Color.Orange, Color.Empty);
-            
-            // 数字颜色
-            HighlightPattern(txtOutput, json, @"\b\d+(\.\d+)?\b", Color.LimeGreen, Color.Empty);
-            
-            // 结构符号颜色
-            HighlightPattern(txtOutput, json, @"[{}[\]:,]", Color.White, Color.Empty);
-        }
-        
-        /// <summary>
-        /// XML语法高亮
-        /// </summary>
-        /// <param name="xml">XML文本</param>
-        private void HighlightXml(string xml)
-        {
-            // 应用基础主题颜色
-            ApplyThemeColors();
-            
-            if (isLight)
-            {
-                // 浅色主题的XML高亮
-                HighlightXmlLight(xml);
-            }
-            else
-            {
-                // 深色主题的XML高亮
-                HighlightXmlDark(xml);
-            }
-        }
-        
-        private void HighlightXmlLight(string xml)
-        {
-            // 标签颜色
-            HighlightPattern(txtOutput, xml, @"<[^>]*>", Color.Blue, Color.Empty);
-            
-            // 属性名颜色
-            HighlightPattern(txtOutput, xml, @"\s+(\w+(?==))", Color.Red, Color.Empty);
-            
-            // 属性值颜色
-            HighlightPattern(txtOutput, xml, @"=""([^""]*)""", Color.Brown, Color.Empty);
-            
-            // 注释颜色
-            HighlightPattern(txtOutput, xml, @"<!--[\s\S]*?-->", Color.Green, Color.Empty);
-        }
-        
-        private void HighlightXmlDark(string xml)
-        {
-            // 标签颜色
-            HighlightPattern(txtOutput, xml, @"<[^>]*>", Color.Cyan, Color.Empty);
-            
-            // 属性名颜色
-            HighlightPattern(txtOutput, xml, @"\s+(\w+(?==))", Color.Orange, Color.Empty);
-            
-            // 属性值颜色
-            HighlightPattern(txtOutput, xml, @"=""([^""]*)""", Color.Yellow, Color.Empty);
-            
-            // 注释颜色
-            HighlightPattern(txtOutput, xml, @"<!--[\s\S]*?-->", Color.LimeGreen, Color.Empty);
-        }
-        
-        /// <summary>
-        /// 使用正则表达式高亮文本模式到指定控件
-        /// </summary>
-        /// <param name="control">要应用高亮的控件</param>
-        /// <param name="text">要处理的文本</param>
-        /// <param name="pattern">正则表达式模式</param>
-        /// <param name="foreColor">前景色</param>
-        /// <param name="backColor">背景色</param>
-        private void HighlightPattern(AntdUI.Input control, string text, string pattern, Color foreColor, Color backColor)
-        {
-            try
-            {
-                var regex = new Regex(pattern, RegexOptions.Multiline);
-                var matches = regex.Matches(text);
-
-                foreach (Match match in matches)
-                {
-                    if (match.Length > 0)
-                    {
-                        // 修复换行符差异导致的索引偏移问题
-                        // 将基于原始文本的索引转换为控件内部使用的索引
-                        int correctedIndex = ConvertIndexForControl(text, control.Text, match.Index);
-                        control.SetStyle(correctedIndex, match.Length, control.Font, foreColor, backColor);
-                    }
-                }
-            }
-            catch
-            {
-                // 忽略正则表达式错误
-            }
-        }
-        
-        /// <summary>
-        /// 将原始文本中的索引转换为控件内部使用的索引（处理换行符差异）
-        /// </summary>
-        /// <param name="originalText">原始文本（可能包含\r\n）</param>
-        /// <param name="controlText">控件内部文本（通常为\n）</param>
-        /// <param name="originalIndex">原始文本中的索引</param>
-        /// <returns>控件内部对应的索引</returns>
-        private int ConvertIndexForControl(string originalText, string controlText, int originalIndex)
-        {
-            // 如果索引在范围之外，直接返回
-            if (originalIndex <= 0 || originalIndex >= originalText.Length)
-                return originalIndex;
-            
-            // 计算到原始索引位置之前的换行符数量差异
-            int crlfCountBeforeIndex = 0;
-            for (int i = 0; i < originalIndex && i < originalText.Length - 1; i++)
-            {
-                if (originalText[i] == '\r' && originalText[i + 1] == '\n')
-                {
-                    crlfCountBeforeIndex++;
-                }
-            }
-            
-            // 控件内部可能将\r\n统一为\n，所以索引需要向前调整
-            return originalIndex - crlfCountBeforeIndex;
-        }
+        #region 树右键菜单
 
         private void TreeOutput_MouseDown(object sender, MouseEventArgs e)
         {
-            if (e.Button == MouseButtons.Right)
+            if (e.Button != MouseButtons.Right) return;
+
+            var menuItems = new List<AntdUI.IContextMenuStripItem>
             {
-                // 创建右键菜单项
-                var menuItems = new List<AntdUI.IContextMenuStripItem>
-                {
-                    new AntdUI.ContextMenuStripItem("📋 复制节点文本") { Tag = "copy_text" },
-                    new AntdUI.ContextMenuStripItem("📦 复制节点值") { Tag = "copy_value" },
-                    new AntdUI.ContextMenuStripItemDivider(),
-                    new AntdUI.ContextMenuStripItem("➕ 展开所有") { Tag = "expand_all" },
-                    new AntdUI.ContextMenuStripItem("➖ 折叠所有") { Tag = "collapse_all" },
-                    new AntdUI.ContextMenuStripItemDivider(),
-                    new AntdUI.ContextMenuStripItem("🔍 在输出中查找") { Tag = "find_in_output" }
-                };
+                new AntdUI.ContextMenuStripItem("📋 复制节点文本") { Tag = "copy_text" },
+                new AntdUI.ContextMenuStripItem("📦 复制节点值") { Tag = "copy_value" },
+                new AntdUI.ContextMenuStripItemDivider(),
+                new AntdUI.ContextMenuStripItem("➕ 展开所有") { Tag = "expand_all" },
+                new AntdUI.ContextMenuStripItem("➖ 折叠所有") { Tag = "collapse_all" },
+                new AntdUI.ContextMenuStripItemDivider(),
+                new AntdUI.ContextMenuStripItem("🔍 用节点内容查找") { Tag = "find_in_output" }
+            };
 
-                // 显示右键菜单
-                AntdUI.ContextMenuStrip.open(treeOutput, OnContextMenuItemClick, menuItems.ToArray());
-            }
-        }
-
-        private void BindButtonWithToolTip(Control parent)
-        {
-            foreach (Control control in parent.Controls)
-            {
-                if (control is AntdUI.Button button)
-                {
-                    AntdUI.TooltipComponent tooltip = new AntdUI.TooltipComponent()
-                    {
-                        Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Regular, GraphicsUnit.Point, ((byte)(134))),
-                    };
-
-                    var name = control.Name;
-                    switch (name)
-                    {
-                        case "btnPretty":
-                            tooltip.ArrowAlign = AntdUI.TAlign.Bottom;
-                            tooltip.SetTip(control, "格式化");
-                            break;
-                        case "btnMinify":
-                            tooltip.ArrowAlign = AntdUI.TAlign.Bottom;
-                            tooltip.SetTip(control, "压缩");
-                            break;
-                        case "btnDetect":
-                            tooltip.ArrowAlign = AntdUI.TAlign.Bottom;
-                            tooltip.SetTip(control, "自动检测格式");
-                            break;
-                        case "btnCopy":
-                            tooltip.ArrowAlign = AntdUI.TAlign.Bottom;
-                            tooltip.SetTip(control, "复制");
-                            break;
-                        case "btnOpen":
-                            tooltip.ArrowAlign = AntdUI.TAlign.Bottom;
-                            tooltip.SetTip(control, "打开文件");
-                            break;
-                        case "btnSave":
-                            tooltip.ArrowAlign = AntdUI.TAlign.Bottom;
-                            tooltip.SetTip(control, "保存文件");
-                            break;
-                        case "btnExpandAll":
-                            tooltip.ArrowAlign = AntdUI.TAlign.Bottom;
-                            tooltip.SetTip(control, "展开所有节点");
-                            break;
-                        case "btnCollapseAll":
-                            tooltip.ArrowAlign = AntdUI.TAlign.Bottom;
-                            tooltip.SetTip(control, "折叠所有节点");
-                            break;
-                        case "btnFindPrev":
-                            tooltip.ArrowAlign = AntdUI.TAlign.Bottom;
-                            tooltip.SetTip(control, "查找上一个");
-                            break;
-                        case "btnFindNext":
-                            tooltip.ArrowAlign = AntdUI.TAlign.Bottom;
-                            tooltip.SetTip(control, "查找下一个");
-                            break;
-                        case "btnFont":
-                            tooltip.ArrowAlign = AntdUI.TAlign.Bottom;
-                            tooltip.SetTip(control, "字体设置");
-                            break;
-                        default:
-                            break;
-                    }
-                }
-            }
+            AntdUI.ContextMenuStrip.open(treeOutput, OnContextMenuItemClick, menuItems.ToArray());
         }
 
         private void OnContextMenuItemClick(AntdUI.ContextMenuStripItem item)
         {
-            switch (item.Tag?.ToString())
+            switch (item.Tag == null ? null : item.Tag.ToString())
             {
                 case "copy_text":
                     CopyTreeNodeText();
@@ -968,7 +1060,7 @@ namespace PrettyText
                     btnCollapseAll_Click(null, EventArgs.Empty);
                     break;
                 case "find_in_output":
-                    FindInOutput();
+                    UseSelectedNodeAsFindText();
                     break;
             }
         }
@@ -976,245 +1068,161 @@ namespace PrettyText
         private void CopyTreeNodeText()
         {
             var selectedNode = treeOutput.SelectItem;
-            if (selectedNode != null)
-            {
-                try
-                {
-                    Clipboard.SetText(selectedNode.Text ?? string.Empty);
-                    lblStatus.Text = "✅ 已复制节点文本";
-                }
-                catch (Exception ex)
-                {
-                    lblStatus.Text = "❌ 复制失败: " + ex.Message;
-                }
-            }
+            if (selectedNode == null) return;
+            lblStatus.Text = ClipboardHelper.TrySetText(selectedNode.Text ?? string.Empty)
+                ? "✅ 已复制节点文本"
+                : "❌ 复制失败：剪贴板被其他程序占用";
         }
 
         private void CopyTreeNodeValue()
         {
             var selectedNode = treeOutput.SelectItem;
-            if (selectedNode != null)
-            {
-                try
-                {
-                    var value = selectedNode.Tag?.ToString() ?? selectedNode.Text ?? string.Empty;
-                    Clipboard.SetText(value);
-                    lblStatus.Text = "✅ 已复制节点值";
-                }
-                catch (Exception ex)
-                {
-                    lblStatus.Text = "❌ 复制失败: " + ex.Message;
-                }
-            }
+            if (selectedNode == null) return;
+            var value = selectedNode.Tag == null ? (selectedNode.Text ?? string.Empty) : selectedNode.Tag.ToString();
+            lblStatus.Text = ClipboardHelper.TrySetText(value)
+                ? "✅ 已复制节点值"
+                : "❌ 复制失败：剪贴板被其他程序占用";
         }
 
-        private void FindInOutput()
+        private void UseSelectedNodeAsFindText()
         {
             var selectedNode = treeOutput.SelectItem;
-            if (selectedNode != null)
-            {
-                var searchText = selectedNode.Text ?? selectedNode.Tag?.ToString() ?? string.Empty;
-                if (!string.IsNullOrEmpty(searchText))
-                {
-                    txtFind.Text = searchText;
-                    // 可以在这里添加实际的查找逻辑
-                    lblStatus.Text = "🔍 已在查找框中填入节点文本";
-                }
-            }
+            if (selectedNode == null) return;
+
+            var searchText = selectedNode.Text ?? Convert.ToString(selectedNode.Tag) ?? string.Empty;
+            if (string.IsNullOrEmpty(searchText)) return;
+
+            txtFind.Text = searchText;
+            lblStatus.Text = "🔍 已填入查找框，回车即可定位";
         }
-        
+
+        #endregion
+
+        #region 导出模型类
+
+        private void TabControl1_SelectedIndexChanged(object sender, AntdUI.IntEventArgs e)
+        {
+            if (e.Value == 2) GenerateClassFromInput();
+        }
+
         private void Select1_SelectedIndexChanged(object sender, EventArgs e)
         {
             GenerateClassFromInput();
         }
-        
-        /// <summary>
-        /// 根据输入生成类定义
-        /// </summary>
+
+        private LanguageType SelectedLanguage()
+        {
+            return string.Equals(select1.Text, "Java", StringComparison.OrdinalIgnoreCase)
+                ? LanguageType.Java
+                : LanguageType.CSharp;
+        }
+
         private void GenerateClassFromInput()
         {
             try
             {
-                // 获取输入文本（来自txtInput或txtOutput）
                 string inputText = txtInput.Text;
+                if (string.IsNullOrWhiteSpace(inputText)) inputText = txtOutput.Text;
+
                 if (string.IsNullOrWhiteSpace(inputText))
                 {
-                    inputText = txtOutput.Text;
-                }
-                
-                if (string.IsNullOrWhiteSpace(inputText))
-                {
-                    input1.Text = "// 请在左侧或右侧输入JSON或XML数据";
-                    lblStatus.Text = "⚠️ 请输入JSON或XML数据";
+                    input1.Text = "// 请在左侧输入或先格式化 JSON / XML 数据";
+                    lblStatus.Text = "⚠️ 请输入 JSON 或 XML 数据";
                     return;
                 }
-                
-                // 确定目标语言
-                ClassGenerator.LanguageType languageType;
-                string selectedLanguage = select1.Text;
-                
-                if (selectedLanguage == "C#")
+
+                if (inputText.Length > ExportGenerateLimit)
                 {
-                    languageType = ClassGenerator.LanguageType.CSharp;
-                }
-                else if (selectedLanguage == "Java")
-                {
-                    languageType = ClassGenerator.LanguageType.Java;
-                }
-                else
-                {
-                    input1.Text = "// 请选择目标语言 (C# 或 Java)";
-                    lblStatus.Text = "⚠️ 请选择目标语言";
+                    input1.Text = "// 内容过大（" + FormatLength(inputText.Length) + "），已跳过模型类生成";
+                    lblStatus.Text = "⚠️ 内容过大，已跳过生成";
                     return;
                 }
+
+                var language = SelectedLanguage();
                 inputText = inputText.Trim();
-                // 生成类名 - 可以从第一个大括号或尖括号前的标识符提取，或者使用默认名称
                 string className = ExtractClassName(inputText) ?? "GeneratedClass";
-                
-                // 生成类定义
-                string generatedCode = ClassGenerator.GenerateClassFromInput(
-                    inputText, 
-                    languageType, 
-                    className);
-                
-                // 显示生成的代码
+
+                string generatedCode = ClassGenerator.GenerateClassFromInput(inputText, language, className);
                 input1.Text = generatedCode;
-                
-                // 应用语法高亮
-                ApplySyntaxHighlightingForCode(languageType, generatedCode);
-                
-                lblStatus.Text = $"✅ 已生成 {selectedLanguage} 类定义";
+                ApplyCodeHighlighting(language);
+
+                lblStatus.Text = "✅ 已生成 " + select1.Text + " 类定义";
             }
             catch (Exception ex)
             {
-                input1.Text = $"// 生成错误: {ex.Message}";
-                lblStatus.Text = $"❌ 生成失败: {ex.Message}";
+                input1.Text = "// 生成错误: " + ex.Message;
+                lblStatus.Text = "❌ 生成失败: " + ex.Message;
             }
         }
-        
-        /// <summary>
-        /// 从输入文本中提取类名
-        /// </summary>
-        /// <param name="input">输入文本</param>
-        /// <returns>提取的类名或null</returns>
+
         private string ExtractClassName(string input)
         {
             if (string.IsNullOrWhiteSpace(input)) return null;
-            
+
             var trimmed = input.TrimStart();
-            
             try
             {
-                if (trimmed.StartsWith("{"))
+                if (trimmed.StartsWith("{")) return "JsonModel";
+                if (trimmed.StartsWith("[")) return "JsonList";
+                if (trimmed.StartsWith("<"))
                 {
-                    // JSON对象 - 使用默认名称
-                    return "JsonModel";
-                }
-                else if (trimmed.StartsWith("["))
-                {
-                    // JSON数组 - 使用默认名称
-                    return "JsonList";
-                }
-                else if (trimmed.StartsWith("<"))
-                {
-                    // XML - 提取根元素名称
-                    var match = System.Text.RegularExpressions.Regex.Match(trimmed, 
-                        @"<([a-zA-Z][^\s\/>]*)", 
+                    var match = System.Text.RegularExpressions.Regex.Match(trimmed,
+                        @"<([a-zA-Z][^\s\/>]*)",
                         System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                     if (match.Success)
                     {
-                        return System.Threading.Thread.CurrentThread.CurrentCulture.TextInfo.ToTitleCase(match.Groups[1].Value);
+                        return System.Threading.Thread.CurrentThread.CurrentCulture.TextInfo
+                            .ToTitleCase(match.Groups[1].Value);
                     }
                 }
             }
-            catch
+            catch (Exception)
             {
-                // 如果提取失败，返回默认名称
+                // 提取失败时使用默认类名
             }
-            
             return null;
         }
-        
+
+        #endregion
+
+        #region 工具栏提示
+
         /// <summary>
-        /// 为生成的代码应用语法高亮
+        /// 旧实现为每个按钮 new 一个 TooltipComponent，这里复用一个实例。
         /// </summary>
-        /// <param name="languageType">语言类型</param>
-        /// <param name="code">代码文本</param>
-        private void ApplySyntaxHighlightingForCode(ClassGenerator.LanguageType languageType, string code)
+        private void BindButtonWithToolTip(Control parent)
         {
-            // 清除现有样式
-            input1.ClearStyle(true);
-            
-            // 应用基础主题颜色
-            ApplyThemeColorsToControl(input1);
-            
-            // 为C#和Java代码应用基本的语法高亮
-            if (languageType == ClassGenerator.LanguageType.CSharp)
+            _tooltip.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Regular, GraphicsUnit.Point);
+            _tooltip.ArrowAlign = AntdUI.TAlign.Bottom;
+
+            foreach (Control control in parent.Controls)
             {
-                ApplyCSharpSyntaxHighlighting(input1, code);
-            }
-            else if (languageType == ClassGenerator.LanguageType.Java)
-            {
-                ApplyJavaSyntaxHighlighting(input1, code);
+                var tip = TipFor(control.Name);
+                if (tip != null) _tooltip.SetTip(control, tip);
             }
         }
-        
-        private void ApplyCSharpSyntaxHighlighting(AntdUI.Input control, string code)
+
+        private static string TipFor(string name)
         {
-            if (isLight)
+            switch (name)
             {
-                // 关键字
-                HighlightPattern(control, code, @"\b(public|private|protected|internal|class|interface|struct|enum|void|int|double|float|bool|string|object|var|dynamic|if|else|for|while|do|switch|case|break|continue|return|new|this|base|using|namespace|static|const|readonly|virtual|override|abstract|sealed|partial|ref|out|params|try|catch|finally|throw|yield|await|async|get|set|add|remove)\b", Color.Blue, Color.Empty);
-                // 类型名
-                HighlightPattern(control, code, @"\b(String|Int32|Double|Boolean|DateTime|List|Dictionary|IEnumerable|IList|IDictionary)\b", Color.Teal, Color.Empty);
-                // 字符串
-                HighlightPattern(control, code, @"""([^""\\]|\\.)*""", Color.Brown, Color.Empty);
-            }
-            else
-            {
-                // 深色主题
-                HighlightPattern(control, code, @"\b(public|private|protected|internal|class|interface|struct|enum|void|int|double|float|bool|string|object|var|dynamic|if|else|for|while|do|switch|case|break|continue|return|new|this|base|using|namespace|static|const|readonly|virtual|override|abstract|sealed|partial|ref|out|params|try|catch|finally|throw|yield|await|async|get|set|add|remove)\b", Color.Cyan, Color.Empty);
-                HighlightPattern(control, code, @"\b(String|Int32|Double|Boolean|DateTime|List|Dictionary|IEnumerable|IList|IDictionary)\b", Color.Orange, Color.Empty);
-                HighlightPattern(control, code, @"""([^""\\]|\\.)*""", Color.Yellow, Color.Empty);
+                case "btnPretty": return "格式化 (Ctrl+E)";
+                case "btnMinify": return "压缩 (Ctrl+M)";
+                case "btnDetect": return "自动检测格式 (F5)";
+                case "btnCopy": return "复制结果";
+                case "btnOpen": return "打开文件 (Ctrl+O)";
+                case "btnSave": return "保存结果 (Ctrl+S)";
+                case "btnWrap": return "自动换行";
+                case "btnClear": return "清空输入与结果";
+                case "btnExpandAll": return "展开所有节点";
+                case "btnCollapseAll": return "折叠所有节点";
+                case "btnFindPrev": return "查找上一个";
+                case "btnFindNext": return "查找下一个 (回车)";
+                case "btnFont": return "字体设置";
+                default: return null;
             }
         }
-        
-        private void ApplyJavaSyntaxHighlighting(AntdUI.Input control, string code)
-        {
-            if (isLight)
-            {
-                // 关键字
-                HighlightPattern(control, code, @"\b(public|private|protected|class|interface|void|int|double|float|boolean|String|Object|if|else|for|while|do|switch|case|break|continue|return|new|this|import|package|static|final|abstract|extends|implements|try|catch|finally|throw|throws)\b", Color.Blue, Color.Empty);
-                // 类型名
-                HighlightPattern(control, code, @"\b(System|ArrayList|HashMap|List|Map|String|Date|Calendar)\b", Color.Teal, Color.Empty);
-                // 字符串
-                HighlightPattern(control, code, @"""([^""\\]|\\.)*""", Color.Brown, Color.Empty);
-            }
-            else
-            {
-                // 深色主题
-                HighlightPattern(control, code, @"\b(public|private|protected|class|interface|void|int|double|float|boolean|String|Object|if|else|for|while|do|switch|case|break|continue|return|new|this|import|package|static|final|abstract|extends|implements|try|catch|finally|throw|throws)\b", Color.Cyan, Color.Empty);
-                HighlightPattern(control, code, @"\b(System|ArrayList|HashMap|List|Map|String|Date|Calendar)\b", Color.Orange, Color.Empty);
-                HighlightPattern(control, code, @"""([^""\\]|\\.)*""", Color.Yellow, Color.Empty);
-            }
-        }
-        
-        /// <summary>
-        /// 应用主题颜色到指定控件
-        /// </summary>
-        /// <param name="control">目标控件</param>
-        private void ApplyThemeColorsToControl(AntdUI.Input control)
-        {
-            if (isLight)
-            {
-                control.ForeColor = Color.Black;
-                control.BackColor = Color.White;
-            }
-            else
-            {
-                control.ForeColor = Color.White;
-                control.BackColor = Color.FromArgb(31, 31, 31);
-            }
-        }
+
+        #endregion
     }
 }

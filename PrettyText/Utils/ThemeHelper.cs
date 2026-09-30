@@ -1,50 +1,66 @@
-﻿using Microsoft.Win32;
+using Microsoft.Win32;
 using System.Drawing;
-// 添加对 AntdUI 的引用
 using AntdUI;
 
 namespace PrettyText.Utils
 {
-    public class ThemeHelper
+    public static class ThemeHelper
     {
         /// <summary>
-        /// 判断是否浅色
+        /// 判断系统是否使用浅色主题
         /// </summary>
-        /// <returns></returns>
         public static bool IsLightMode()
         {
-            RegistryKey key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
-            if (key != null)
+            try
             {
-                int appsUseLightTheme = (int)key.GetValue("AppsUseLightTheme", -1);
-                if (appsUseLightTheme == 1)
+                using (var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"))
                 {
-                    return true;
+                    if (key != null)
+                    {
+                        object value = key.GetValue("AppsUseLightTheme");
+                        if (value is int) return (int)value == 1;
+                    }
                 }
-                return false;
+            }
+            catch (System.Exception)
+            {
+                // 读取注册表失败时按浅色处理
             }
             return true;
         }
 
         /// <summary>
-        /// 设置明暗颜色
+        /// 设置明暗模式。
+        /// 旧实现只在深色时设置 IsDark、从不复位，切回浅色后状态会不一致。
         /// </summary>
-        /// <param name="window">父窗口</param>
-        /// <param name="isLight">是否亮色</param>
         public static void SetColorMode(AntdUI.Window window, bool isLight)
         {
-            if (isLight)
-            {
-                AntdUI.Config.IsLight = true;
-                window.BackColor = Color.White;
-                window.ForeColor = Color.Black;
-            }
-            else
-            {
-                AntdUI.Config.IsDark = true;// 设置为深色模式
-                window.BackColor = Color.FromArgb(31, 31, 31);
-                window.ForeColor = Color.White;
-            }
+            AntdUI.Config.Mode = isLight ? TMode.Light : TMode.Dark;
+            if (window != null) window.BackColor = Background(isLight);
+        }
+
+        /// <summary>窗口 / 编辑器背景色</summary>
+        public static Color Background(bool isLight)
+        {
+            return isLight ? Color.White : Color.FromArgb(31, 31, 31);
+        }
+
+        /// <summary>状态栏背景色</summary>
+        public static Color StatusBarBackground(bool isLight)
+        {
+            return isLight ? Color.FromArgb(250, 250, 250) : Color.FromArgb(38, 38, 38);
+        }
+
+        /// <summary>默认前景色</summary>
+        public static Color Foreground(bool isLight)
+        {
+            return isLight ? Color.FromArgb(40, 40, 40) : Color.FromArgb(220, 220, 220);
+        }
+
+        /// <summary>占位符颜色</summary>
+        public static Color Placeholder(bool isLight)
+        {
+            return isLight ? Color.FromArgb(160, 160, 160) : Color.FromArgb(120, 120, 120);
         }
     }
 }

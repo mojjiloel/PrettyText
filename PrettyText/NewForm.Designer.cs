@@ -34,14 +34,15 @@
             this.button_color = new AntdUI.Button();
             this.splitContainer1 = new AntdUI.Splitter();
             this.panelLeft = new AntdUI.Panel();
-            this.txtInput = new AntdUI.Input();
+            this.txtInput = new PrettyText.Controls.CodeEditor();
             this.panelRight = new AntdUI.Panel();
             this.tabControl1 = new AntdUI.Tabs();
+            this.tabText = new AntdUI.TabPage();
+            this.panelTextOutput = new AntdUI.Panel();
+            this.txtOutput = new PrettyText.Controls.CodeEditor();
             this.tabExport = new AntdUI.TabPage();
             this.select1 = new AntdUI.Select();
-            this.input1 = new AntdUI.Input();
-            this.tabText = new AntdUI.TabPage();
-            this.txtOutput = new AntdUI.Input();
+            this.input1 = new PrettyText.Controls.CodeEditor();
             this.tabTree = new AntdUI.TabPage();
             this.treeOutput = new AntdUI.Tree();
             this.panelToolbar = new AntdUI.Panel();
@@ -52,6 +53,8 @@
             this.btnCopy = new AntdUI.Button();
             this.btnOpen = new AntdUI.Button();
             this.btnSave = new AntdUI.Button();
+            this.btnWrap = new AntdUI.Button();
+            this.btnClear = new AntdUI.Button();
             this.btnExpandAll = new AntdUI.Button();
             this.btnCollapseAll = new AntdUI.Button();
             this.txtFind = new AntdUI.Input();
@@ -70,8 +73,9 @@
             this.panelLeft.SuspendLayout();
             this.panelRight.SuspendLayout();
             this.tabControl1.SuspendLayout();
-            this.tabExport.SuspendLayout();
             this.tabText.SuspendLayout();
+            this.panelTextOutput.SuspendLayout();
+            this.tabExport.SuspendLayout();
             this.tabTree.SuspendLayout();
             this.panelToolbar.SuspendLayout();
             this.statusPanel.SuspendLayout();
@@ -127,21 +131,23 @@
             // panelLeft
             // 
             this.panelLeft.Controls.Add(this.txtInput);
+            this.panelLeft.BorderWidth = 1F;
             this.panelLeft.Dock = System.Windows.Forms.DockStyle.Fill;
             this.panelLeft.Location = new System.Drawing.Point(0, 0);
             this.panelLeft.Name = "panelLeft";
+            this.panelLeft.Radius = 6;
             this.panelLeft.Size = new System.Drawing.Size(618, 448);
             this.panelLeft.TabIndex = 0;
             // 
             // txtInput
             // 
-            this.txtInput.AutoScroll = true;
-            this.txtInput.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.txtInput.Location = new System.Drawing.Point(0, 0);
-            this.txtInput.Multiline = true;
+            this.txtInput.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
+            | System.Windows.Forms.AnchorStyles.Left) 
+            | System.Windows.Forms.AnchorStyles.Right)));
+            this.txtInput.Location = new System.Drawing.Point(8, 8);
             this.txtInput.Name = "txtInput";
             this.txtInput.PlaceholderText = "请输入要格式化的文本...";
-            this.txtInput.Size = new System.Drawing.Size(618, 448);
+            this.txtInput.Size = new System.Drawing.Size(602, 432);
             this.txtInput.TabIndex = 0;
             // 
             // panelRight
@@ -155,19 +161,53 @@
             // 
             // tabControl1
             // 
-            this.tabControl1.Controls.Add(this.tabText);
             this.tabControl1.Controls.Add(this.tabExport);
             this.tabControl1.Controls.Add(this.tabTree);
-            this.tabControl1.Cursor = System.Windows.Forms.Cursors.Default;
+            this.tabControl1.Controls.Add(this.tabText);
+            this.tabControl1.Cursor = System.Windows.Forms.Cursors.Hand;
             this.tabControl1.Dock = System.Windows.Forms.DockStyle.Fill;
             this.tabControl1.Location = new System.Drawing.Point(0, 0);
             this.tabControl1.Name = "tabControl1";
             this.tabControl1.Pages.Add(this.tabText);
             this.tabControl1.Pages.Add(this.tabTree);
             this.tabControl1.Pages.Add(this.tabExport);
+            this.tabControl1.SelectedIndex = 0;
             this.tabControl1.Size = new System.Drawing.Size(727, 448);
             this.tabControl1.Style = styleLine1;
             this.tabControl1.TabIndex = 0;
+            // 
+            // tabText
+            // 
+            this.tabText.Controls.Add(this.panelTextOutput);
+            this.tabText.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.tabText.Location = new System.Drawing.Point(0, 30);
+            this.tabText.Name = "tabText";
+            this.tabText.Size = new System.Drawing.Size(727, 418);
+            this.tabText.TabIndex = 2;
+            this.tabText.Text = "Text";
+            // 
+            // panelTextOutput
+            // 
+            this.panelTextOutput.BorderWidth = 1F;
+            this.panelTextOutput.Controls.Add(this.txtOutput);
+            this.panelTextOutput.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.panelTextOutput.Location = new System.Drawing.Point(0, 0);
+            this.panelTextOutput.Name = "panelTextOutput";
+            this.panelTextOutput.Radius = 6;
+            this.panelTextOutput.Size = new System.Drawing.Size(727, 418);
+            this.panelTextOutput.TabIndex = 0;
+            // 
+            // txtOutput
+            // 
+            this.txtOutput.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
+            | System.Windows.Forms.AnchorStyles.Left) 
+            | System.Windows.Forms.AnchorStyles.Right)));
+            this.txtOutput.Location = new System.Drawing.Point(8, 8);
+            this.txtOutput.Name = "txtOutput";
+            this.txtOutput.PlaceholderText = "格式化后的文本将显示在这里...";
+            this.txtOutput.ReadOnly = true;
+            this.txtOutput.Size = new System.Drawing.Size(711, 402);
+            this.txtOutput.TabIndex = 0;
             // 
             // tabExport
             // 
@@ -195,35 +235,11 @@
             this.input1.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
             | System.Windows.Forms.AnchorStyles.Left) 
             | System.Windows.Forms.AnchorStyles.Right)));
-            this.input1.AutoScroll = true;
-            this.input1.Location = new System.Drawing.Point(0, 43);
-            this.input1.Multiline = true;
+            this.input1.Location = new System.Drawing.Point(6, 43);
             this.input1.Name = "input1";
-            this.input1.PlaceholderText = "";
-            this.input1.Size = new System.Drawing.Size(727, 375);
+            this.input1.PlaceholderText = "生成的模型类将显示在这里...";
+            this.input1.Size = new System.Drawing.Size(715, 363);
             this.input1.TabIndex = 1;
-            // 
-            // tabText
-            // 
-            this.tabText.Controls.Add(this.txtOutput);
-            this.tabText.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.tabText.Location = new System.Drawing.Point(0, 30);
-            this.tabText.Name = "tabText";
-            this.tabText.Size = new System.Drawing.Size(727, 418);
-            this.tabText.TabIndex = 2;
-            this.tabText.Text = "Text";
-            // 
-            // txtOutput
-            // 
-            this.txtOutput.AutoScroll = true;
-            this.txtOutput.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.txtOutput.Location = new System.Drawing.Point(0, 0);
-            this.txtOutput.Multiline = true;
-            this.txtOutput.Name = "txtOutput";
-            this.txtOutput.PlaceholderText = "格式化后的文本将显示在这里...";
-            this.txtOutput.ReadOnly = true;
-            this.txtOutput.Size = new System.Drawing.Size(727, 418);
-            this.txtOutput.TabIndex = 0;
             // 
             // tabTree
             // 
@@ -252,6 +268,8 @@
             this.panelToolbar.Controls.Add(this.btnCopy);
             this.panelToolbar.Controls.Add(this.btnOpen);
             this.panelToolbar.Controls.Add(this.btnSave);
+            this.panelToolbar.Controls.Add(this.btnWrap);
+            this.panelToolbar.Controls.Add(this.btnClear);
             this.panelToolbar.Controls.Add(this.btnExpandAll);
             this.panelToolbar.Controls.Add(this.btnCollapseAll);
             this.panelToolbar.Controls.Add(this.txtFind);
@@ -335,6 +353,29 @@
             this.btnSave.Name = "btnSave";
             this.btnSave.Size = new System.Drawing.Size(50, 30);
             this.btnSave.TabIndex = 6;
+            // 
+            // btnWrap
+            // 
+            this.btnWrap.BorderWidth = 1F;
+            this.btnWrap.IconSvg = "<svg viewBox=\"0 0 24 24\"><path d=\"M4 19h6v-2H4v2zM20 5H4v2h16V5zm-3 6H" +
+    "4v2h13.25c1.1 0 2 .9 2 2s-.9 2-2 2H15v-2l-3 3 3 3v-2h2c2.21 0 4-1.79 4-4s-1" +
+    ".79-4-4-4z\"/></svg>";
+            this.btnWrap.JoinMode = AntdUI.TJoinMode.Left;
+            this.btnWrap.Location = new System.Drawing.Point(452, 15);
+            this.btnWrap.Name = "btnWrap";
+            this.btnWrap.Size = new System.Drawing.Size(50, 30);
+            this.btnWrap.TabIndex = 16;
+            // 
+            // btnClear
+            // 
+            this.btnClear.BorderWidth = 1F;
+            this.btnClear.IconSvg = "<svg viewBox=\"0 0 24 24\"><path d=\"M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v1" +
+    "2zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z\"/></svg>";
+            this.btnClear.JoinMode = AntdUI.TJoinMode.Right;
+            this.btnClear.Location = new System.Drawing.Point(502, 15);
+            this.btnClear.Name = "btnClear";
+            this.btnClear.Size = new System.Drawing.Size(50, 30);
+            this.btnClear.TabIndex = 17;
             // 
             // btnExpandAll
             // 
@@ -422,11 +463,13 @@
             // 
             // lblStats
             // 
-            this.lblStats.AutoSizeMode = AntdUI.TAutoSize.Auto;
-            this.lblStats.Location = new System.Drawing.Point(1299, 4);
+            this.lblStats.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
+            this.lblStats.AutoSizeMode = AntdUI.TAutoSize.None;
+            this.lblStats.Location = new System.Drawing.Point(1059, 3);
             this.lblStats.Name = "lblStats";
-            this.lblStats.Size = new System.Drawing.Size(0, 16);
+            this.lblStats.Size = new System.Drawing.Size(280, 16);
             this.lblStats.TabIndex = 1;
+            this.lblStats.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
             // 
             // NewForm
             // 
@@ -451,8 +494,9 @@
             this.panelLeft.ResumeLayout(false);
             this.panelRight.ResumeLayout(false);
             this.tabControl1.ResumeLayout(false);
-            this.tabExport.ResumeLayout(false);
             this.tabText.ResumeLayout(false);
+            this.panelTextOutput.ResumeLayout(false);
+            this.tabExport.ResumeLayout(false);
             this.tabTree.ResumeLayout(false);
             this.panelToolbar.ResumeLayout(false);
             this.statusPanel.ResumeLayout(false);
@@ -466,10 +510,11 @@
         private AntdUI.PageHeader pageHeader1;
         private AntdUI.Splitter splitContainer1;
         private AntdUI.Panel panelLeft;
-        private AntdUI.Input txtInput;
+        private PrettyText.Controls.CodeEditor txtInput;
         private AntdUI.Panel panelRight;
         private AntdUI.Tabs tabControl1;
-        private AntdUI.Input txtOutput;
+        private AntdUI.Panel panelTextOutput;
+        private PrettyText.Controls.CodeEditor txtOutput;
         private AntdUI.Tree treeOutput;
         private AntdUI.Panel panelToolbar;
         private AntdUI.Button btnPretty;
@@ -479,6 +524,8 @@
         private AntdUI.Button btnCopy;
         private AntdUI.Button btnOpen;
         private AntdUI.Button btnSave;
+        private AntdUI.Button btnWrap;
+        private AntdUI.Button btnClear;
         private AntdUI.Button btnExpandAll;
         private AntdUI.Button btnCollapseAll;
         private AntdUI.Input txtFind;
@@ -493,7 +540,7 @@
         private AntdUI.TabPage tabTree;
         private AntdUI.Button button_color;
         private AntdUI.TabPage tabExport;
-        private AntdUI.Input input1;
+        private PrettyText.Controls.CodeEditor input1;
         private AntdUI.Select select1;
     }
 }
